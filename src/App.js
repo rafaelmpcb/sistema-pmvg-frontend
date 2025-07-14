@@ -5,7 +5,7 @@ import {
   Calendar, DollarSign, Building, Users, Target, Bell,
   Activity, TrendingUp, BarChart3, FileSpreadsheet, Plus,
   Search, Filter, Edit, Trash2, Eye, Save, X, Mail,
-  Calculator, DocumentText, Printer, Package, TrendingDown,
+  Calculator, FileText, Printer, Package, TrendingDown,
   TrendingUp as TrendingUpIcon, AlertCircle, Award, FileDown,
   PieChart, BarChart, LineChart, ShoppingCart, Pill, Database,
   ExternalLink, ChevronRight, AlertOctagon, CheckSquare
