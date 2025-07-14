@@ -1698,7 +1698,7 @@ const AcoesUrgentesView = ({ licitacoes, alertas, medicamentosComRisco, onOpenMo
                       Ajustar Preços de Fábrica
                     </button>
                     <button style={styles.actionButton}>
-                      <DocumentText size={14} />
+                      <FileText size={16} />
                       Solicitar Majoração
                     </button>
                     <button style={styles.actionButton}>
