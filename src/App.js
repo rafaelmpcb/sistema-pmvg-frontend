@@ -1782,7 +1782,13 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
                           </td>
                         </tr>
                       );
-                    }) : null}
+                    }) : (
+                      <tr>
+                        <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#6b7280' }}>
+                          Nenhum resultado encontrado
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -3691,6 +3697,29 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
                           
                           <div style={{ marginLeft: '1rem' }}>
                             {isAcimaPMVG ? (
+                              <div style={{ ...styles.alertError, padding: '0.5rem' }}>
+                                <strong>🚨 RISCO DE MULTA CRÍTICO</strong>
+                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
+                                  Preço R$ {(precoOfertado - med.pmvg).toFixed(2)} acima da PMVG
+                                </p>
+                              </div>
+                            ) : temRisco ? (
+                              <div style={{ ...styles.alertWarning, padding: '0.5rem' }}>
+                                <strong>⚠️ RISCO CONTRATUAL</strong>
+                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
+                                  Preço fábrica maior que ofertado
+                                </p>
+                              </div>
+                            ) : (
+                              <div style={{ ...styles.alertSuccess, padding: '0.5rem' }}>
+                                <strong>✅ CONFORME - SEM RISCOS</strong>
+                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
+                                  Dentro dos parâmetros de segurança
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                               <div style={{ ...styles.alertError, padding: '0.5rem' }}>
                                 <strong>🚨 RISCO DE MULTA CRÍTICO</strong>
                                 <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
