@@ -2738,6 +2738,27 @@ const VisualizarModal = ({ data, onClose }) => {
                 </p>
               </div>
             )}
+            
+            {data.autorizacaoRiscosPMVG && (
+              <div style={{ ...styles.alert, ...styles.alertInfo }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <User size={16} />
+                  <strong>Autorização Manual Registrada</strong>
+                </div>
+                <div style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem' }}>
+                  <p><strong>Autorizado por:</strong> {data.autorizacaoRiscosPMVG.nomeAutorizador}</p>
+                  {data.autorizacaoRiscosPMVG.cargo && (
+                    <p><strong>Cargo:</strong> {data.autorizacaoRiscosPMVG.cargo}</p>
+                  )}
+                  {data.autorizacaoRiscosPMVG.justificativa && (
+                    <p><strong>Justificativa:</strong> {data.autorizacaoRiscosPMVG.justificativa}</p>
+                  )}
+                  <p><strong>Data:</strong> {new Date(data.autorizacaoRiscosPMVG.dataAutorizacao).toLocaleString('pt-BR')}</p>
+                  <p><strong>Medicamentos autorizados:</strong> {data.autorizacaoRiscosPMVG.totalMedicamentosAutorizados}</p>
+                  <p><strong>Valor total de excesso:</strong> R$ {data.autorizacaoRiscosPMVG.valorTotalExcesso.toFixed(2)}</p>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2949,6 +2970,12 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showManualForm, setShowManualForm] = useState(false);
+  const [autorizacaoManual, setAutorizacaoManual] = useState({
+    ativa: false,
+    nomeAutorizador: '',
+    cargo: '',
+    justificativa: ''
+  });
   const [manualMed, setManualMed] = useState({
     nome: '',
     laboratorio: '',
@@ -3037,19 +3064,28 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
     }
 
     const medicamentosComRisco = selectedMedicamentos.filter(med => {
-      const precoFabrica = med.precoFabricaEditavel || med.precoFabrica || 0;
       const precoOfertado = med.precoOfertado || 0;
       return precoOfertado > med.pmvg;
     });
 
+    // Verificar se há medicamentos acima do PMVG sem autorização
     if (medicamentosComRisco.length > 0) {
+      const temAutorizacao = autorizacaoManual.nomeAutorizador.trim() !== '';
+      
+      if (!temAutorizacao) {
+        alert('❌ AUTORIZAÇÃO NECESSÁRIA\n\nExistem medicamentos com preço acima do PMVG.\nPreencha o nome de quem autoriza esta proposta na aba "Análise PMVG".');
+        return;
+      }
+      
+      // Confirmação final com autorização
       const confirmacao = window.confirm(
-        `⚠️ ATENÇÃO: PREÇOS ACIMA DO PMVG DETECTADOS\n\n` +
+        `⚠️ CONFIRMAÇÃO: PREÇOS ACIMA DO PMVG COM AUTORIZAÇÃO\n\n` +
         `${medicamentosComRisco.length} medicamento(s) com preço ofertado acima do PMVG.\n` +
-        `Isso pode resultar em multas da ANVISA.\n\n` +
-        `Medicamentos em risco:\n` +
-        medicamentosComRisco.map(med => `• ${med.nome} - R$ ${((med.precoOfertado || 0) - med.pmvg).toFixed(2)} acima`).join('\n') +
-        `\n\nDeseja continuar mesmo assim?`
+        `Autorizado por: ${autorizacaoManual.nomeAutorizador}\n` +
+        `${autorizacaoManual.cargo ? `Cargo: ${autorizacaoManual.cargo}\n` : ''}` +
+        `${autorizacaoManual.justificativa ? `Justificativa: ${autorizacaoManual.justificativa}\n` : ''}` +
+        `\n⚠️ ATENÇÃO: Isso pode resultar em multas da ANVISA.\n\n` +
+        `Deseja continuar e salvar com autorização manual?`
       );
       
       if (!confirmacao) {
@@ -3067,7 +3103,31 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
         const economia = med.pmvg - (med.precoOfertado || 0);
         return acc + (economia > 0 ? economia * (med.quantidade || 1) : 0);
       }, 0),
-      temRiscos: medicamentosComRisco.length > 0
+      temRiscos: medicamentosComRisco.length > 0,
+      
+      // NOVO: Dados de autorização manual para preços acima do PMVG
+      autorizacaoRiscosPMVG: medicamentosComRisco.length > 0 ? {
+        temAutorizacao: true,
+        nomeAutorizador: autorizacaoManual.nomeAutorizador,
+        cargo: autorizacaoManual.cargo || null,
+        justificativa: autorizacaoManual.justificativa || null,
+        dataAutorizacao: new Date().toISOString(),
+        usuarioSistema: JSON.parse(localStorage.getItem('user'))?.email || 'sistema',
+        totalMedicamentosAutorizados: medicamentosComRisco.length,
+        valorTotalExcesso: medicamentosComRisco.reduce((acc, med) => 
+          acc + ((med.precoOfertado - med.pmvg) * (med.quantidade || 1)), 0
+        ),
+        medicamentosAutorizados: medicamentosComRisco.map(med => ({
+          nome: med.nome,
+          laboratorio: med.laboratorio,
+          codigo: med.codigo,
+          pmvg: med.pmvg,
+          precoOfertado: med.precoOfertado,
+          quantidade: med.quantidade || 1,
+          valorExcesso: (med.precoOfertado - med.pmvg),
+          valorTotalExcesso: (med.precoOfertado - med.pmvg) * (med.quantidade || 1)
+        }))
+      } : null
     };
 
     onSave(licitacaoCompleta);
@@ -3561,11 +3621,66 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
                           
                           <div style={{ marginLeft: '1rem' }}>
                             {isAcimaPMVG ? (
-                              <div style={{ ...styles.alertError, padding: '0.5rem' }}>
-                                <strong>🚨 RISCO DE MULTA CRÍTICO</strong>
-                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
+                              <div style={{ ...styles.alertError, padding: '1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                  <AlertTriangle size={16} />
+                                  <strong>🚨 RISCO DE MULTA CRÍTICO</strong>
+                                </div>
+                                <p style={{ margin: '0 0 1rem 0', fontSize: '0.875rem' }}>
                                   Preço R$ {(precoOfertado - med.pmvg).toFixed(2)} acima da PMVG
                                 </p>
+                                
+                                <div style={{ 
+                                  backgroundColor: 'white', 
+                                  padding: '1rem', 
+                                  borderRadius: '6px',
+                                  border: '1px solid #fca5a5'
+                                }}>
+                                  <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem', fontWeight: '600', color: '#1f2937' }}>
+                                    ⚠️ Autorização Manual Necessária
+                                  </h4>
+                                  
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    <input
+                                      type="text"
+                                      placeholder="Nome de quem autoriza esta proposta *"
+                                      value={autorizacaoManual.nomeAutorizador}
+                                      onChange={(e) => setAutorizacaoManual({...autorizacaoManual, nomeAutorizador: e.target.value})}
+                                      style={{ 
+                                        ...styles.input, 
+                                        padding: '0.5rem',
+                                        fontSize: '0.875rem',
+                                        borderColor: autorizacaoManual.nomeAutorizador ? '#d1d5db' : '#f87171'
+                                      }}
+                                    />
+                                    <input
+                                      type="text"
+                                      placeholder="Cargo (opcional)"
+                                      value={autorizacaoManual.cargo}
+                                      onChange={(e) => setAutorizacaoManual({...autorizacaoManual, cargo: e.target.value})}
+                                      style={{ 
+                                        ...styles.input, 
+                                        padding: '0.5rem',
+                                        fontSize: '0.875rem'
+                                      }}
+                                    />
+                                    <textarea
+                                      placeholder="Justificativa para autorizar preço acima do PMVG (opcional)"
+                                      value={autorizacaoManual.justificativa}
+                                      onChange={(e) => setAutorizacaoManual({...autorizacaoManual, justificativa: e.target.value})}
+                                      style={{ 
+                                        ...styles.textarea, 
+                                        padding: '0.5rem',
+                                        fontSize: '0.875rem',
+                                        minHeight: '60px'
+                                      }}
+                                    />
+                                  </div>
+                                  
+                                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>
+                                    💡 Esta informação será registrada para auditoria e relatórios
+                                  </div>
+                                </div>
                               </div>
                             ) : temRisco ? (
                               <div style={{ ...styles.alertWarning, padding: '0.5rem' }}>
@@ -3599,19 +3714,37 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
           </button>
           <button 
             onClick={handleSubmit}
-            disabled={selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg)}
+            disabled={(() => {
+              const medicamentosAcimaPMVG = selectedMedicamentos.filter(m => (m.precoOfertado || 0) > m.pmvg);
+              const temAutorizacao = autorizacaoManual.nomeAutorizador.trim() !== '';
+              return medicamentosAcimaPMVG.length > 0 && !temAutorizacao;
+            })()}
             style={{ 
               ...styles.button, 
-              ...(selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg) ? 
-                { ...styles.buttonDanger, opacity: 0.7 } : 
-                styles.buttonSuccess
-              )
+              ...((() => {
+                const medicamentosAcimaPMVG = selectedMedicamentos.filter(m => (m.precoOfertado || 0) > m.pmvg);
+                const temAutorizacao = autorizacaoManual.nomeAutorizador.trim() !== '';
+                const precisaAutorizacao = medicamentosAcimaPMVG.length > 0 && !temAutorizacao;
+                
+                return precisaAutorizacao ? 
+                  { ...styles.buttonDanger, opacity: 0.7 } : 
+                  styles.buttonSuccess;
+              })())
             }}
           >
-            {selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg) ? 
-              'Corrija os Riscos Primeiro' : 
-              'Salvar Licitação'
-            }
+            {(() => {
+              const medicamentosAcimaPMVG = selectedMedicamentos.filter(m => (m.precoOfertado || 0) > m.pmvg);
+              const temAutorizacao = autorizacaoManual.nomeAutorizador.trim() !== '';
+              const precisaAutorizacao = medicamentosAcimaPMVG.length > 0 && !temAutorizacao;
+              
+              if (precisaAutorizacao) {
+                return 'Preencha a Autorização Manual';
+              } else if (medicamentosAcimaPMVG.length > 0 && temAutorizacao) {
+                return 'Salvar com Autorização Manual';
+              } else {
+                return 'Salvar Licitação';
+              }
+            })()}
           </button>
         </div>
       </div>
