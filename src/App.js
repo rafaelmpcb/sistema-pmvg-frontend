@@ -428,7 +428,7 @@ function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [loading, setLoading] = useState(false);
   const [systemStatus, setSystemStatus] = useState(null);
-  const [pmvgStatus, setPmvgStatus] = useState({ totalMedicamentos: 0 });
+  const [pmvgStatus, setPmvgStatus] = useState(null);
   const [licitacoes, setLicitacoes] = useState([]);
   const [alertas, setAlertas] = useState([]);
   const [message, setMessage] = useState(null);
@@ -488,16 +488,6 @@ function App() {
 
       if (response.status === 401) {
         logout();
-        return null;
-      }
-
-      if (response.status === 403) {
-        console.warn('403 Forbidden - Backend rejeitou requisição para:', endpoint);
-        return null; // Retorna null para ser tratado no loadData
-      }
-
-      if (!response.ok) {
-        console.error(`Erro HTTP ${response.status} para ${endpoint}`);
         return null;
       }
 
@@ -569,30 +559,11 @@ function App() {
         api('/pmvg/status')
       ]);
       
-      // ✅ PROTEÇÃO CONTRA DADOS VAZIOS
-      if (licitacoesData && Array.isArray(licitacoesData)) {
-        setLicitacoes(licitacoesData);
-      } else {
-        setLicitacoes([]); // Array vazio se backend não responder
-      }
-      
-      if (alertasData && Array.isArray(alertasData)) {
-        setAlertas(alertasData);
-      } else {
-        setAlertas([]); // Array vazio se backend não responder
-      }
-      
-      if (pmvgData) {
-        setPmvgStatus(pmvgData);
-      } else {
-        setPmvgStatus({ totalMedicamentos: 0 }); // Objeto padrão
-      }
+      if (licitacoesData) setLicitacoes(licitacoesData);
+      if (alertasData) setAlertas(alertasData);
+      if (pmvgData) setPmvgStatus(pmvgData);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
-      // ✅ GARANTIR QUE ARRAYS EXISTAM MESMO COM ERRO
-      setLicitacoes([]);
-      setAlertas([]);
-      setPmvgStatus({ totalMedicamentos: 0 });
     }
   };
 
@@ -641,11 +612,7 @@ function App() {
   };
 
   const deleteLicitacao = async (licitacaoId) => {
-    // ✅ PROTEÇÃO CONTRA DADOS VAZIOS
-    const licitacoesSeguras = Array.isArray(licitacoes) ? licitacoes : [];
-    const alertasSeguras = Array.isArray(alertas) ? alertas : [];
-    
-    const licitacao = licitacoesSeguras.find(l => l.id === licitacaoId);
+    const licitacao = licitacoes.find(l => l.id === licitacaoId);
     
     if (user.role !== 'admin') {
       showMessage('error', 'Apenas administradores podem excluir licitações');
@@ -661,21 +628,15 @@ function App() {
       `⚠️ EXCLUSÃO PERMANENTE\n\n` +
       `Licitação: ${licitacao?.numero || licitacaoId}\n` +
       `Medicamentos: ${licitacao?.medicamentos?.length || 0}\n` +
-      `Alertas: ${alertasSeguras.filter(a => a.licitacao === licitacao?.numero).length}\n\n` +
+      `Alertas: ${alertas.filter(a => a.licitacao === licitacao?.numero).length}\n\n` +
       `Esta ação irá excluir TUDO em cascata e não pode ser desfeita.\n\n` +
       `Tem certeza absoluta?`
     );
     
     if (confirmacao) {
       try {
-        setAlertas(prev => {
-          const prevSeguro = Array.isArray(prev) ? prev : [];
-          return prevSeguro.filter(a => a.licitacao !== licitacao?.numero);
-        });
-        setLicitacoes(prev => {
-          const prevSeguro = Array.isArray(prev) ? prev : [];
-          return prevSeguro.filter(l => l.id !== licitacaoId);
-        });
+        setAlertas(prev => prev.filter(a => a.licitacao !== licitacao?.numero));
+        setLicitacoes(prev => prev.filter(l => l.id !== licitacaoId));
         
         try {
           const response = await api(`/licitacoes/${licitacaoId}`, {
@@ -1294,14 +1255,10 @@ const StatCard = ({ title, value, icon: Icon, color, subtitle }) => (
 
 // Dashboard View
 const DashboardView = ({ systemStatus, licitacoes, alertas, pmvgStatus, user, checkMonthlyNotifications, openEmailConfig }) => {
-  // ✅ PROTEÇÃO CONTRA DADOS VAZIOS
-  const alertasSeguras = Array.isArray(alertas) ? alertas : [];
-  const licitacoesSeguras = Array.isArray(licitacoes) ? licitacoes : [];
+  const alertasAtivos = alertas.filter(a => a.status === 'ativo');
+  const licitacoesAtivas = licitacoes.filter(l => l.status === 'ativa');
   
-  const alertasAtivos = alertasSeguras.filter(a => a.status === 'ativo');
-  const licitacoesAtivas = licitacoesSeguras.filter(l => l.status === 'ativa');
-  
-  const medicamentosComRisco = licitacoesSeguras.reduce((total, lic) => {
+  const medicamentosComRisco = licitacoes.reduce((total, lic) => {
     return total + (lic.medicamentosComRisco || 0);
   }, 0);
 
@@ -1751,7 +1708,7 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
                     </tr>
                   </thead>
                   <tbody>
-                    {Array.isArray(searchResults) ? searchResults.slice(0, 50).map(med => {
+                    {searchResults.slice(0, 50).map(med => {
                       const isAcimaPMVG = med.precoFabrica && med.precoFabrica > med.pmvg;
                       return (
                         <tr key={med.id || med.codigo}>
@@ -1782,13 +1739,7 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
                           </td>
                         </tr>
                       );
-                    }) : (
-                      <tr>
-                        <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#6b7280' }}>
-                          Nenhum resultado encontrado
-                        </td>
-                      </tr>
-                    )}
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1870,157 +1821,150 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
 };
 
 // Licitações View com busca inteligente
-const LicitacoesView = ({ licitacoes, onOpenModal, onDelete, onVisualizar, user }) => {
-  // ✅ PROTEÇÃO CONTRA DADOS VAZIOS
-  const licitacoesSeguras = Array.isArray(licitacoes) ? licitacoes : [];
-  
-  return (
-    <div>
-      <div style={styles.card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={styles.cardTitle}>Gestão de Licitações PMVG</h2>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              onClick={() => onOpenModal('licitacao')}
-              style={{ ...styles.button, ...styles.buttonPrimary }}
-            >
-              <Plus size={16} />
-              Nova Licitação
-            </button>
-            <button style={{ ...styles.button, ...styles.buttonSecondary }}>
-              <Upload size={16} />
-              Importar
-            </button>
-          </div>
+const LicitacoesView = ({ licitacoes, onOpenModal, onDelete, onVisualizar, user }) => (
+  <div>
+    <div style={styles.card}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <h2 style={styles.cardTitle}>Gestão de Licitações PMVG</h2>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            onClick={() => onOpenModal('licitacao')}
+            style={{ ...styles.button, ...styles.buttonPrimary }}
+          >
+            <Plus size={16} />
+            Nova Licitação
+          </button>
+          <button style={{ ...styles.button, ...styles.buttonSecondary }}>
+            <Upload size={16} />
+            Importar
+          </button>
         </div>
+      </div>
 
-        {licitacoesSeguras.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
-            <FileText size={64} style={{ margin: '0 auto 1rem', color: '#d1d5db' }} />
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem' }}>Nenhuma licitação cadastrada</h3>
-            <p style={{ margin: '0 0 1rem 0' }}>Comece criando sua primeira licitação com sistema PMVG</p>
-            <button
-              onClick={() => onOpenModal('licitacao')}
-              style={{ ...styles.button, ...styles.buttonPrimary }}
-            >
-              <Plus size={16} />
-              Criar Primeira Licitação
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gap: '1rem' }}>
-            {licitacoesSeguras.map(licitacao => {
-              const diasRestantes = Math.ceil((new Date(licitacao.dataVencimento) - new Date()) / (1000 * 60 * 60 * 24));
-              const isVencendo = diasRestantes <= 7;
-              const medicamentosComRisco = licitacao.medicamentosComRisco || 0;
-              
-              return (
-                <div key={licitacao.id} style={{ 
-                  border: '1px solid #e5e7eb', 
-                  borderRadius: '8px', 
-                  padding: '1.5rem',
-                  borderLeft: `4px solid ${isVencendo ? '#dc2626' : medicamentosComRisco > 0 ? '#d97706' : '#16a34a'}`
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                    <div>
-                      <h4 style={{ margin: '0 0 0.5rem 0', fontWeight: '600', color: '#1f2937', fontSize: '1.125rem' }}>
-                        {licitacao.numero}
-                      </h4>
-                      <p style={{ margin: '0 0 0.5rem 0', color: '#6b7280' }}>
-                        {licitacao.orgao}
-                      </p>
-                      <div style={{ display: 'flex', gap: '1rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                        <span>
-                          <Calendar size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                          Vencimento: {new Date(licitacao.dataVencimento).toLocaleDateString('pt-BR')}
-                        </span>
-                        <span>
-                          <DollarSign size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                          Valor: R$ {licitacao.valor?.toLocaleString('pt-BR')}
-                        </span>
-                        <span style={{ color: isVencendo ? '#dc2626' : '#16a34a' }}>
-                          <Clock size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                          {diasRestantes > 0 ? `${diasRestantes} dias restantes` : 'Vencida'}
-                        </span>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button 
-                        onClick={() => onOpenModal('licitacao', licitacao)}
-                        style={{ ...styles.button, ...styles.buttonSecondary }}
-                      >
-                        <Edit size={16} />
-                        Editar
-                      </button>
-                      <button 
-                        onClick={() => onVisualizar(licitacao)}
-                        style={{ ...styles.button, ...styles.buttonPrimary }}
-                      >
-                        <Eye size={16} />
-                        Visualizar
-                      </button>
-                      {user.role === 'admin' && (
-                        <button 
-                          onClick={() => onDelete(licitacao.id)}
-                          style={{ ...styles.button, ...styles.buttonDanger }}
-                        >
-                          <Trash2 size={16} />
-                          Excluir
-                        </button>
-                      )}
+      {licitacoes.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+          <FileText size={64} style={{ margin: '0 auto 1rem', color: '#d1d5db' }} />
+          <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem' }}>Nenhuma licitação cadastrada</h3>
+          <p style={{ margin: '0 0 1rem 0' }}>Comece criando sua primeira licitação com sistema PMVG</p>
+          <button
+            onClick={() => onOpenModal('licitacao')}
+            style={{ ...styles.button, ...styles.buttonPrimary }}
+          >
+            <Plus size={16} />
+            Criar Primeira Licitação
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          {licitacoes.map(licitacao => {
+            const diasRestantes = Math.ceil((new Date(licitacao.dataVencimento) - new Date()) / (1000 * 60 * 60 * 24));
+            const isVencendo = diasRestantes <= 7;
+            const medicamentosComRisco = licitacao.medicamentosComRisco || 0;
+            
+            return (
+              <div key={licitacao.id} style={{ 
+                border: '1px solid #e5e7eb', 
+                borderRadius: '8px', 
+                padding: '1.5rem',
+                borderLeft: `4px solid ${isVencendo ? '#dc2626' : medicamentosComRisco > 0 ? '#d97706' : '#16a34a'}`
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                  <div>
+                    <h4 style={{ margin: '0 0 0.5rem 0', fontWeight: '600', color: '#1f2937', fontSize: '1.125rem' }}>
+                      {licitacao.numero}
+                    </h4>
+                    <p style={{ margin: '0 0 0.5rem 0', color: '#6b7280' }}>
+                      {licitacao.orgao}
+                    </p>
+                    <div style={{ display: 'flex', gap: '1rem', fontSize: '0.875rem', color: '#6b7280' }}>
+                      <span>
+                        <Calendar size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                        Vencimento: {new Date(licitacao.dataVencimento).toLocaleDateString('pt-BR')}
+                      </span>
+                      <span>
+                        <DollarSign size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                        Valor: R$ {licitacao.valor?.toLocaleString('pt-BR')}
+                      </span>
+                      <span style={{ color: isVencendo ? '#dc2626' : '#16a34a' }}>
+                        <Clock size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                        {diasRestantes > 0 ? `${diasRestantes} dias restantes` : 'Vencida'}
+                      </span>
                     </div>
                   </div>
-                  
-                  {medicamentosComRisco > 0 && (
-                    <div style={{ ...styles.alert, ...styles.alertWarning, margin: '0 0 1rem 0', padding: '0.75rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <AlertTriangle size={16} />
-                        <strong>Risco de Multa Detectado</strong>
-                      </div>
-                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
-                        {medicamentosComRisco} medicamento(s) com risco de descumprimento contratual. 
-                        Ação urgente necessária para evitar penalidades.
-                      </p>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button 
+                      onClick={() => onOpenModal('licitacao', licitacao)}
+                      style={{ ...styles.button, ...styles.buttonSecondary }}
+                    >
+                      <Edit size={16} />
+                      Editar
+                    </button>
+                    <button 
+                      onClick={() => onVisualizar(licitacao)}
+                      style={{ ...styles.button, ...styles.buttonPrimary }}
+                    >
+                      <Eye size={16} />
+                      Visualizar
+                    </button>
+                    {user.role === 'admin' && (
+                      <button 
+                        onClick={() => onDelete(licitacao.id)}
+                        style={{ ...styles.button, ...styles.buttonDanger }}
+                      >
+                        <Trash2 size={16} />
+                        Excluir
+                      </button>
+                    )}
+                  </div>
+                </div>
+                
+                {medicamentosComRisco > 0 && (
+                  <div style={{ ...styles.alert, ...styles.alertWarning, margin: '0 0 1rem 0', padding: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <AlertTriangle size={16} />
+                      <strong>Risco de Multa Detectado</strong>
                     </div>
-                  )}
+                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
+                      {medicamentosComRisco} medicamento(s) com risco de descumprimento contratual. 
+                      Ação urgente necessária para evitar penalidades.
+                    </p>
+                  </div>
+                )}
+                
+                <div style={{ 
+                  backgroundColor: '#f9fafb', 
+                  padding: '1rem', 
+                  borderRadius: '6px',
+                  border: '1px solid #e5e7eb'
+                }}>
+                  <h5 style={{ margin: '0 0 0.5rem 0', fontWeight: '500', color: '#1f2937' }}>
+                    Medicamentos: {licitacao.totalMedicamentos || 0}
+                  </h5>
                   
-                  <div style={{ 
-                    backgroundColor: '#f9fafb', 
-                    padding: '1rem', 
-                    borderRadius: '6px',
-                    border: '1px solid #e5e7eb'
-                  }}>
-                    <h5 style={{ margin: '0 0 0.5rem 0', fontWeight: '500', color: '#1f2937' }}>
-                      Medicamentos: {licitacao.totalMedicamentos || 0}
-                    </h5>
-                    
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', fontSize: '0.75rem' }}>
-                      <div style={{ color: '#16a34a' }}>
-                        <strong>✅ Conformes:</strong> {(licitacao.totalMedicamentos || 0) - medicamentosComRisco}
-                      </div>
-                      <div style={{ color: '#dc2626' }}>
-                        <strong>⚠️ Em Risco:</strong> {medicamentosComRisco}
-                      </div>
-                      <div style={{ color: '#2563eb' }}>
-                        <strong>💰 Economia:</strong> R$ {(licitacao.economiaTotal || 0).toLocaleString('pt-BR')}
-                      </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', fontSize: '0.75rem' }}>
+                    <div style={{ color: '#16a34a' }}>
+                      <strong>✅ Conformes:</strong> {(licitacao.totalMedicamentos || 0) - medicamentosComRisco}
+                    </div>
+                    <div style={{ color: '#dc2626' }}>
+                      <strong>⚠️ Em Risco:</strong> {medicamentosComRisco}
+                    </div>
+                    <div style={{ color: '#2563eb' }}>
+                      <strong>💰 Economia:</strong> R$ {(licitacao.economiaTotal || 0).toLocaleString('pt-BR')}
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
-  );
-};
+  </div>
+);
 
 // Alertas View
 const AlertasView = ({ alertas, pmvgStatus, onResolverAlerta }) => {
-  // ✅ PROTEÇÃO CONTRA DADOS VAZIOS
-  const alertasSeguras = Array.isArray(alertas) ? alertas : [];
-  const alertasAtivos = alertasSeguras.filter(a => a.status === 'ativo');
+  const alertasAtivos = alertas.filter(a => a.status === 'ativo');
   const alertasPorTipo = alertasAtivos.reduce((acc, alerta) => {
     acc[alerta.tipo] = (acc[alerta.tipo] || 0) + 1;
     return acc;
@@ -2139,11 +2083,8 @@ const AlertasView = ({ alertas, pmvgStatus, onResolverAlerta }) => {
 const AcoesUrgentesView = ({ licitacoes, alertas, onOpenModal, onVisualizar, user }) => {
   const [filtroRisco, setFiltroRisco] = useState('todos');
   
-  // ✅ PROTEÇÃO CONTRA DADOS VAZIOS
-  const licitacoesSeguras = Array.isArray(licitacoes) ? licitacoes : [];
-  
-  const medicamentosEmRisco = licitacoesSeguras.reduce((acc, licitacao) => {
-    if (licitacao.medicamentos && Array.isArray(licitacao.medicamentos)) {
+  const medicamentosEmRisco = licitacoes.reduce((acc, licitacao) => {
+    if (licitacao.medicamentos) {
       licitacao.medicamentos.forEach(med => {
         const precoFabrica = med.precoFabricaEditavel || med.precoFabrica || 0;
         const precoOfertado = med.precoOfertado || 0;
@@ -2543,17 +2484,13 @@ const RelatoriosView = ({ licitacoes, alertas, onExport }) => {
   const [selectedPeriod, setSelectedPeriod] = useState('mes');
   const [selectedType, setSelectedType] = useState('geral');
 
-  // ✅ PROTEÇÃO CONTRA DADOS VAZIOS
-  const licitacoesSeguras = Array.isArray(licitacoes) ? licitacoes : [];
-  const alertasSeguras = Array.isArray(alertas) ? alertas : [];
-
   const estatisticas = {
-    licitacoesTotal: licitacoesSeguras.length,
-    licitacoesAtivas: licitacoesSeguras.filter(l => l.status === 'ativa').length,
-    alertasAtivos: alertasSeguras.filter(a => a.status === 'ativo').length,
-    medicamentosTotal: licitacoesSeguras.reduce((acc, lic) => acc + (lic.totalMedicamentos || 0), 0),
-    medicamentosRisco: licitacoesSeguras.reduce((acc, lic) => acc + (lic.medicamentosComRisco || 0), 0),
-    economiaTotal: licitacoesSeguras.reduce((acc, lic) => acc + (lic.economiaTotal || 0), 0)
+    licitacoesTotal: licitacoes.length,
+    licitacoesAtivas: licitacoes.filter(l => l.status === 'ativa').length,
+    alertasAtivos: alertas.filter(a => a.status === 'ativo').length,
+    medicamentosTotal: licitacoes.reduce((acc, lic) => acc + (lic.totalMedicamentos || 0), 0),
+    medicamentosRisco: licitacoes.reduce((acc, lic) => acc + (lic.medicamentosComRisco || 0), 0),
+    economiaTotal: licitacoes.reduce((acc, lic) => acc + (lic.economiaTotal || 0), 0)
   };
 
   return (
@@ -2675,8 +2612,7 @@ const VisualizarModal = ({ data, onClose }) => {
   
   if (!data) return null;
   
-  // ✅ PROTEÇÃO CONTRA DADOS VAZIOS
-  const medicamentos = Array.isArray(data.medicamentos) ? data.medicamentos : [];
+  const medicamentos = data.medicamentos || [];
   const medicamentosComRisco = medicamentos.filter(med => {
     const precoFabrica = med.precoFabricaEditavel || med.precoFabrica || 0;
     const precoOfertado = med.precoOfertado || 0;
@@ -2800,27 +2736,6 @@ const VisualizarModal = ({ data, onClose }) => {
                   {medicamentosComRisco.length} medicamento(s) apresentam risco de multa ou problemas contratuais. 
                   Verifique a aba "Análise de Conformidade" para detalhes.
                 </p>
-              </div>
-            )}
-            
-            {data.autorizacaoRiscosPMVG && (
-              <div style={{ ...styles.alert, ...styles.alertInfo }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <User size={16} />
-                  <strong>Autorização Manual Registrada</strong>
-                </div>
-                <div style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem' }}>
-                  <p><strong>Autorizado por:</strong> {data.autorizacaoRiscosPMVG.nomeAutorizador}</p>
-                  {data.autorizacaoRiscosPMVG.cargo && (
-                    <p><strong>Cargo:</strong> {data.autorizacaoRiscosPMVG.cargo}</p>
-                  )}
-                  {data.autorizacaoRiscosPMVG.justificativa && (
-                    <p><strong>Justificativa:</strong> {data.autorizacaoRiscosPMVG.justificativa}</p>
-                  )}
-                  <p><strong>Data:</strong> {new Date(data.autorizacaoRiscosPMVG.dataAutorizacao).toLocaleString('pt-BR')}</p>
-                  <p><strong>Medicamentos autorizados:</strong> {data.autorizacaoRiscosPMVG.totalMedicamentosAutorizados}</p>
-                  <p><strong>Valor total de excesso:</strong> R$ {data.autorizacaoRiscosPMVG.valorTotalExcesso.toFixed(2)}</p>
-                </div>
               </div>
             )}
           </div>
@@ -3030,17 +2945,10 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
     observacoes: data?.observacoes || ''
   });
   
-  // ✅ PROTEÇÃO CONTRA DADOS VAZIOS
-  const [selectedMedicamentos, setSelectedMedicamentos] = useState(Array.isArray(data?.medicamentos) ? data.medicamentos : []);
+  const [selectedMedicamentos, setSelectedMedicamentos] = useState(data?.medicamentos || []);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showManualForm, setShowManualForm] = useState(false);
-  const [autorizacaoManual, setAutorizacaoManual] = useState({
-    ativa: false,
-    nomeAutorizador: '',
-    cargo: '',
-    justificativa: ''
-  });
   const [manualMed, setManualMed] = useState({
     nome: '',
     laboratorio: '',
@@ -3068,18 +2976,14 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
   };
 
   const addMedicamento = (medicamento) => {
-    const medicamentosSeguras = Array.isArray(selectedMedicamentos) ? selectedMedicamentos : [];
-    const exists = medicamentosSeguras.find(m => m.codigo === medicamento.codigo);
+    const exists = selectedMedicamentos.find(m => m.codigo === medicamento.codigo);
     if (!exists) {
-      setSelectedMedicamentos(prev => {
-        const prevSeguro = Array.isArray(prev) ? prev : [];
-        return [...prevSeguro, {
-          ...medicamento,
-          precoOfertado: 0,
-          quantidade: 1,
-          origem: 'busca'
-        }];
-      });
+      setSelectedMedicamentos(prev => [...prev, {
+        ...medicamento,
+        precoOfertado: 0,
+        quantidade: 1,
+        origem: 'busca'
+      }]);
     }
     setSearchTerm('');
     setSearchResults([]);
@@ -3097,10 +3001,7 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
         origem: 'manual'
       };
       
-      setSelectedMedicamentos(prev => {
-        const prevSeguro = Array.isArray(prev) ? prev : [];
-        return [...prevSeguro, novoMed];
-      });
+      setSelectedMedicamentos(prev => [...prev, novoMed]);
       setManualMed({
         nome: '',
         laboratorio: '',
@@ -3115,20 +3016,18 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
   };
 
   const removeMedicamento = (medicamentoId) => {
-    setSelectedMedicamentos(prev => {
-      const prevSeguro = Array.isArray(prev) ? prev : [];
-      return prevSeguro.filter(m => m.id !== medicamentoId && m.codigo !== medicamentoId);
-    });
+    setSelectedMedicamentos(prev => 
+      prev.filter(m => m.id !== medicamentoId && m.codigo !== medicamentoId)
+    );
   };
 
   const updateMedicamento = (medicamentoId, field, value) => {
-    setSelectedMedicamentos(prev => {
-      const prevSeguro = Array.isArray(prev) ? prev : [];
-      return prevSeguro.map(m => 
+    setSelectedMedicamentos(prev => 
+      prev.map(m => 
         (m.id === medicamentoId || m.codigo === medicamentoId) ? 
           { ...m, [field]: parseFloat(value) || 0 } : m
-      );
-    });
+      )
+    );
   };
 
   const handleSubmit = () => {
@@ -3137,31 +3036,20 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
       return;
     }
 
-    // ✅ PROTEÇÃO CONTRA DADOS VAZIOS
-    const medicamentosSeguras = Array.isArray(selectedMedicamentos) ? selectedMedicamentos : [];
-    const medicamentosComRisco = medicamentosSeguras.filter(med => {
+    const medicamentosComRisco = selectedMedicamentos.filter(med => {
+      const precoFabrica = med.precoFabricaEditavel || med.precoFabrica || 0;
       const precoOfertado = med.precoOfertado || 0;
       return precoOfertado > med.pmvg;
     });
 
-    // Verificar se há medicamentos acima do PMVG sem autorização
     if (medicamentosComRisco.length > 0) {
-      const temAutorizacao = autorizacaoManual.nomeAutorizador.trim() !== '';
-      
-      if (!temAutorizacao) {
-        alert('❌ AUTORIZAÇÃO NECESSÁRIA\n\nExistem medicamentos com preço acima do PMVG.\nPreencha o nome de quem autoriza esta proposta na aba "Análise PMVG".');
-        return;
-      }
-      
-      // Confirmação final com autorização
       const confirmacao = window.confirm(
-        `⚠️ CONFIRMAÇÃO: PREÇOS ACIMA DO PMVG COM AUTORIZAÇÃO\n\n` +
+        `⚠️ ATENÇÃO: PREÇOS ACIMA DO PMVG DETECTADOS\n\n` +
         `${medicamentosComRisco.length} medicamento(s) com preço ofertado acima do PMVG.\n` +
-        `Autorizado por: ${autorizacaoManual.nomeAutorizador}\n` +
-        `${autorizacaoManual.cargo ? `Cargo: ${autorizacaoManual.cargo}\n` : ''}` +
-        `${autorizacaoManual.justificativa ? `Justificativa: ${autorizacaoManual.justificativa}\n` : ''}` +
-        `\n⚠️ ATENÇÃO: Isso pode resultar em multas da ANVISA.\n\n` +
-        `Deseja continuar e salvar com autorização manual?`
+        `Isso pode resultar em multas da ANVISA.\n\n` +
+        `Medicamentos em risco:\n` +
+        medicamentosComRisco.map(med => `• ${med.nome} - R$ ${((med.precoOfertado || 0) - med.pmvg).toFixed(2)} acima`).join('\n') +
+        `\n\nDeseja continuar mesmo assim?`
       );
       
       if (!confirmacao) {
@@ -3171,39 +3059,15 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
 
     const licitacaoCompleta = {
       ...formData,
-      medicamentos: medicamentosSeguras,
-      totalMedicamentos: medicamentosSeguras.length,
+      medicamentos: selectedMedicamentos,
+      totalMedicamentos: selectedMedicamentos.length,
       medicamentosComRisco: medicamentosComRisco.length,
-      valorTotal: medicamentosSeguras.reduce((acc, med) => acc + ((med.precoOfertado || 0) * (med.quantidade || 1)), 0),
-      economiaTotal: medicamentosSeguras.reduce((acc, med) => {
+      valorTotal: selectedMedicamentos.reduce((acc, med) => acc + ((med.precoOfertado || 0) * (med.quantidade || 1)), 0),
+      economiaTotal: selectedMedicamentos.reduce((acc, med) => {
         const economia = med.pmvg - (med.precoOfertado || 0);
         return acc + (economia > 0 ? economia * (med.quantidade || 1) : 0);
       }, 0),
-      temRiscos: medicamentosComRisco.length > 0,
-      
-      // NOVO: Dados de autorização manual para preços acima do PMVG
-      autorizacaoRiscosPMVG: medicamentosComRisco.length > 0 ? {
-        temAutorizacao: true,
-        nomeAutorizador: autorizacaoManual.nomeAutorizador,
-        cargo: autorizacaoManual.cargo || null,
-        justificativa: autorizacaoManual.justificativa || null,
-        dataAutorizacao: new Date().toISOString(),
-        usuarioSistema: JSON.parse(localStorage.getItem('user'))?.email || 'sistema',
-        totalMedicamentosAutorizados: medicamentosComRisco.length,
-        valorTotalExcesso: medicamentosComRisco.reduce((acc, med) => 
-          acc + ((med.precoOfertado - med.pmvg) * (med.quantidade || 1)), 0
-        ),
-        medicamentosAutorizados: medicamentosComRisco.map(med => ({
-          nome: med.nome,
-          laboratorio: med.laboratorio,
-          codigo: med.codigo,
-          pmvg: med.pmvg,
-          precoOfertado: med.precoOfertado,
-          quantidade: med.quantidade || 1,
-          valorExcesso: (med.precoOfertado - med.pmvg),
-          valorTotalExcesso: (med.precoOfertado - med.pmvg) * (med.quantidade || 1)
-        }))
-      } : null
+      temRiscos: medicamentosComRisco.length > 0
     };
 
     onSave(licitacaoCompleta);
@@ -3515,10 +3379,10 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
             </div>
             
             <h4 style={{ margin: '1.5rem 0 1rem 0', fontSize: '1.125rem', fontWeight: '600' }}>
-              Medicamentos Selecionados ({Array.isArray(selectedMedicamentos) ? selectedMedicamentos.length : 0})
+              Medicamentos Selecionados ({selectedMedicamentos.length})
             </h4>
             
-            {(!Array.isArray(selectedMedicamentos) || selectedMedicamentos.length === 0) ? (
+            {selectedMedicamentos.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280', backgroundColor: '#f9fafb', borderRadius: '6px' }}>
                 <Pill size={48} style={{ margin: '0 auto 1rem', color: '#d1d5db' }} />
                 <p>Nenhum medicamento selecionado</p>
@@ -3618,7 +3482,7 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
               Análise PMVG - Prevenção de Multas
             </h4>
             
-            {(!Array.isArray(selectedMedicamentos) || selectedMedicamentos.length === 0) ? (
+            {selectedMedicamentos.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
                 <AlertTriangle size={48} style={{ margin: '0 auto 1rem', color: '#d1d5db' }} />
                 <p>Adicione medicamentos para visualizar a análise PMVG</p>
@@ -3720,115 +3584,6 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
                             )}
                           </div>
                         </div>
-                              <div style={{ ...styles.alertError, padding: '0.5rem' }}>
-                                <strong>🚨 RISCO DE MULTA CRÍTICO</strong>
-                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
-                                  Preço R$ {(precoOfertado - med.pmvg).toFixed(2)} acima da PMVG
-                                </p>
-                              </div>
-                            ) : temRisco ? (
-                              <div style={{ ...styles.alertWarning, padding: '0.5rem' }}>
-                                <strong>⚠️ RISCO CONTRATUAL</strong>
-                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
-                                  Preço fábrica maior que ofertado
-                                </p>
-                              </div>
-                            ) : (
-                              <div style={{ ...styles.alertSuccess, padding: '0.5rem' }}>
-                                <strong>✅ CONFORME - SEM RISCOS</strong>
-                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
-                                  Dentro dos parâmetros de segurança
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-                              <div style={{ ...styles.alertError, padding: '1rem' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                                  <AlertTriangle size={16} />
-                                  <strong>🚨 RISCO DE MULTA CRÍTICO</strong>
-                                </div>
-                                <p style={{ margin: '0 0 1rem 0', fontSize: '0.875rem' }}>
-                                  Preço R$ {(precoOfertado - med.pmvg).toFixed(2)} acima da PMVG
-                                </p>
-                                
-                                <div style={{ 
-                                  backgroundColor: 'white', 
-                                  padding: '1rem', 
-                                  borderRadius: '6px',
-                                  border: '1px solid #fca5a5'
-                                }}>
-                                  <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem', fontWeight: '600', color: '#1f2937' }}>
-                                    ⚠️ Autorização Manual Necessária
-                                  </h4>
-                                  
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                    <input
-                                      type="text"
-                                      placeholder="Nome de quem autoriza esta proposta *"
-                                      value={autorizacaoManual.nomeAutorizador}
-                                      onChange={(e) => setAutorizacaoManual({...autorizacaoManual, nomeAutorizador: e.target.value})}
-                                      style={{ 
-                                        ...styles.input, 
-                                        padding: '0.5rem',
-                                        fontSize: '0.875rem',
-                                        borderColor: autorizacaoManual.nomeAutorizador ? '#d1d5db' : '#f87171'
-                                      }}
-                                    />
-                                    <input
-                                      type="text"
-                                      placeholder="Cargo (opcional)"
-                                      value={autorizacaoManual.cargo}
-                                      onChange={(e) => setAutorizacaoManual({...autorizacaoManual, cargo: e.target.value})}
-                                      style={{ 
-                                        ...styles.input, 
-                                        padding: '0.5rem',
-                                        fontSize: '0.875rem'
-                                      }}
-                                    />
-                                    <textarea
-                                      placeholder="Justificativa para autorizar preço acima do PMVG (opcional)"
-                                      value={autorizacaoManual.justificativa}
-                                      onChange={(e) => setAutorizacaoManual({...autorizacaoManual, justificativa: e.target.value})}
-                                      style={{ 
-                                        ...styles.textarea, 
-                                        padding: '0.5rem',
-                                        fontSize: '0.875rem',
-                                        minHeight: '60px'
-                                      }}
-                                    />
-                                  </div>
-                                  
-                                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>
-                                    💡 Esta informação será registrada para auditoria e relatórios
-                                  </div>
-                                </div>
-                              </div>
-                            ) : temRisco ? (
-                              <div style={{ ...styles.alertWarning, padding: '0.5rem' }}>
-                                <strong>⚠️ RISCO CONTRATUAL</strong>
-                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
-                                  Preço fábrica maior que ofertado
-                                </p>
-                              </div>
-                            ) : (
-                              <div style={{ ...styles.alertSuccess, padding: '0.5rem' }}>
-                                <strong>✅ CONFORME - SEM RISCOS</strong>
-                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
-                                  Dentro dos parâmetros de segurança
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
                       </div>
                     );
                   })}
@@ -3844,40 +3599,19 @@ const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
           </button>
           <button 
             onClick={handleSubmit}
-            disabled={(() => {
-              const medicamentosSeguras = Array.isArray(selectedMedicamentos) ? selectedMedicamentos : [];
-              const medicamentosAcimaPMVG = medicamentosSeguras.filter(m => (m.precoOfertado || 0) > m.pmvg);
-              const temAutorizacao = autorizacaoManual.nomeAutorizador.trim() !== '';
-              return medicamentosAcimaPMVG.length > 0 && !temAutorizacao;
-            })()}
+            disabled={selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg)}
             style={{ 
               ...styles.button, 
-              ...((() => {
-                const medicamentosSeguras = Array.isArray(selectedMedicamentos) ? selectedMedicamentos : [];
-                const medicamentosAcimaPMVG = medicamentosSeguras.filter(m => (m.precoOfertado || 0) > m.pmvg);
-                const temAutorizacao = autorizacaoManual.nomeAutorizador.trim() !== '';
-                const precisaAutorizacao = medicamentosAcimaPMVG.length > 0 && !temAutorizacao;
-                
-                return precisaAutorizacao ? 
-                  { ...styles.buttonDanger, opacity: 0.7 } : 
-                  styles.buttonSuccess;
-              })())
+              ...(selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg) ? 
+                { ...styles.buttonDanger, opacity: 0.7 } : 
+                styles.buttonSuccess
+              )
             }}
           >
-            {(() => {
-              const medicamentosSeguras = Array.isArray(selectedMedicamentos) ? selectedMedicamentos : [];
-              const medicamentosAcimaPMVG = medicamentosSeguras.filter(m => (m.precoOfertado || 0) > m.pmvg);
-              const temAutorizacao = autorizacaoManual.nomeAutorizador.trim() !== '';
-              const precisaAutorizacao = medicamentosAcimaPMVG.length > 0 && !temAutorizacao;
-              
-              if (precisaAutorizacao) {
-                return 'Preencha a Autorização Manual';
-              } else if (medicamentosAcimaPMVG.length > 0 && temAutorizacao) {
-                return 'Salvar com Autorização Manual';
-              } else {
-                return 'Salvar Licitação';
-              }
-            })()}
+            {selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg) ? 
+              'Corrija os Riscos Primeiro' : 
+              'Salvar Licitação'
+            }
           </button>
         </div>
       </div>
