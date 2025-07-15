@@ -13,7 +13,7 @@ import {
 // URL do backend no Render
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://sistema-pmvg-backend.onrender.com/api';
 
-// ✅ NOVO: Debug para verificar URL da API
+// ✅ Debug para verificar URL da API
 console.log('🌐 API Base URL configurada:', API_BASE_URL);
 console.log('🔧 Variável de ambiente REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
 
@@ -434,7 +434,7 @@ function App() {
   const [message, setMessage] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('');
-  const [selectedLicitacao, setSelectedLicitacao] = useState(null); // ✅ CORRIGIDO: Estado adicionado
+  const [selectedLicitacao, setSelectedLicitacao] = useState(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailConfig, setEmailConfig] = useState({
     email: '',
@@ -465,7 +465,7 @@ function App() {
     
     if (token && userData) {
       setUser(JSON.parse(userData));
-      setEmailConfig(prev => ({ ...prev, email: JSON.parse(userData).email })); // ✅ CORRIGIDO: Atualizar email no config
+      setEmailConfig(prev => ({ ...prev, email: JSON.parse(userData).email }));
       loadSystemStatus();
       loadData();
       
@@ -520,7 +520,7 @@ function App() {
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
         setUser(data.user);
-        setEmailConfig(prev => ({ ...prev, email: data.user.email })); // ✅ CORRIGIDO: Atualizar email no login
+        setEmailConfig(prev => ({ ...prev, email: data.user.email }));
         await loadSystemStatus();
         await loadData();
         showMessage('success', 'Login realizado com sucesso!');
@@ -567,13 +567,11 @@ function App() {
     }
   };
 
-  // ✅ NOVO: Função para testar conectividade e forçar reload
   const testConnectivity = async () => {
     setLoading(true);
     showMessage('info', '🔄 Testando conectividade com backend...');
     
     try {
-      // Testar health check
       const healthResponse = await fetch(`${API_BASE_URL}/health`, {
         method: 'GET',
         timeout: 10000
@@ -585,7 +583,6 @@ function App() {
       
       showMessage('success', '✅ Backend conectado! Atualizando dados...');
       
-      // Recarregar dados
       await loadSystemStatus();
       await loadData();
       
@@ -607,7 +604,7 @@ function App() {
       
       if (response) {
         showMessage('success', 'Preço de fábrica atualizado com sucesso!');
-        await loadData(); // Recarregar dados após atualização
+        await loadData();
       }
     } catch (error) {
       showMessage('error', 'Erro ao atualizar preço de fábrica');
@@ -615,18 +612,45 @@ function App() {
   };
 
   const deleteLicitacao = async (licitacaoId) => {
-    if (window.confirm('⚠️ Tem certeza que deseja EXCLUIR esta licitação? Esta ação não pode ser desfeita.')) {
+    const licitacao = licitacoes.find(l => l.id === licitacaoId);
+    
+    if (user.role !== 'admin') {
+      showMessage('error', 'Apenas administradores podem excluir licitações');
+      return;
+    }
+    
+    if (licitacao?.status === 'executando') {
+      showMessage('error', 'Não é possível excluir licitação em execução');
+      return;
+    }
+    
+    const confirmacao = window.confirm(
+      `⚠️ EXCLUSÃO PERMANENTE\n\n` +
+      `Licitação: ${licitacao?.numero || licitacaoId}\n` +
+      `Medicamentos: ${licitacao?.medicamentos?.length || 0}\n` +
+      `Alertas: ${alertas.filter(a => a.licitacao === licitacao?.numero).length}\n\n` +
+      `Esta ação irá excluir TUDO em cascata e não pode ser desfeita.\n\n` +
+      `Tem certeza absoluta?`
+    );
+    
+    if (confirmacao) {
       try {
-        const response = await api(`/licitacoes/${licitacaoId}`, {
-          method: 'DELETE'
-        });
+        setAlertas(prev => prev.filter(a => a.licitacao !== licitacao?.numero));
+        setLicitacoes(prev => prev.filter(l => l.id !== licitacaoId));
         
-        if (response && response.sucesso) {
-          showMessage('success', 'Licitação excluída com sucesso!');
-          await loadData();
+        try {
+          const response = await api(`/licitacoes/${licitacaoId}`, {
+            method: 'DELETE'
+          });
+          console.log('✅ Licitação excluída do backend');
+        } catch (error) {
+          console.log('⚠️ Backend não disponível, excluído localmente');
         }
+        
+        showMessage('success', 'Licitação e dados relacionados excluídos com sucesso!');
+        await loadData();
       } catch (error) {
-        showMessage('error', 'Erro ao excluir licitação');
+        showMessage('error', 'Erro ao excluir licitação: ' + error.message);
       }
     }
   };
@@ -652,6 +676,12 @@ function App() {
     setShowModal(true);
   };
 
+  const openVisualizarModal = (licitacao) => {
+    setSelectedLicitacao(licitacao);
+    setModalType('visualizar');
+    setShowModal(true);
+  };
+
   const closeModal = () => {
     setShowModal(false);
     setModalType('');
@@ -660,8 +690,6 @@ function App() {
 
   const saveLicitacao = async (licitacaoData) => {
     try {
-      // Como o backend atual não tem endpoint de licitações funcionando,
-      // vamos salvar localmente e simular a API
       const novaLicitacao = {
         id: Date.now(),
         ...licitacaoData,
@@ -670,17 +698,14 @@ function App() {
       };
 
       if (selectedLicitacao) {
-        // Editar licitação existente
         setLicitacoes(prev => prev.map(l => 
           l.id === selectedLicitacao.id ? { ...l, ...licitacaoData } : l
         ));
         showMessage('success', 'Licitação atualizada com sucesso!');
       } else {
-        // Nova licitação - salvar localmente
         setLicitacoes(prev => [...prev, novaLicitacao]);
         showMessage('success', 'Licitação criada com sucesso!');
         
-        // Tentar salvar no backend (se disponível)
         try {
           await api('/licitacoes', {
             method: 'POST',
@@ -708,13 +733,11 @@ function App() {
   };
 
   const saveEmailConfig = () => {
-    // Salvar configurações de email
     localStorage.setItem('emailConfig', JSON.stringify(emailConfig));
     showMessage('success', 'Configurações de email salvas com sucesso!');
     setShowEmailModal(false);
   };
 
-  // ✅ CORRIGIDO: Função exportData completa
   const exportData = async (type, format) => {
     try {
       const response = await fetch(`${API_BASE_URL}/relatorios/${type}?format=${format}`, {
@@ -743,7 +766,6 @@ function App() {
     }
   };
 
-  // ✅ CORRIGIDO: Função de busca com melhor tratamento de erro
   const searchMedicamentos = async (searchTerm) => {
     if (!searchTerm || searchTerm.length < 2) return [];
     
@@ -793,13 +815,11 @@ function App() {
     }
   };
 
-  // ✅ CORRIGIDO: Função checkMonthlyNotifications reparada
   const checkMonthlyNotifications = () => {
     const hoje = new Date();
     const ultimaNotificacao = localStorage.getItem('ultimaNotificacaoMensal');
     const ultimaData = ultimaNotificacao ? new Date(ultimaNotificacao) : null;
     
-    // Verificar se passou um mês desde a última notificação OU se é dia 28
     const umMesAtras = new Date();
     umMesAtras.setMonth(umMesAtras.getMonth() - 1);
     
@@ -807,7 +827,6 @@ function App() {
     const tempoParaNotificar = !ultimaData || ultimaData < umMesAtras || isDia28;
     
     if (tempoParaNotificar) {
-      // Gerar notificação mensal
       const notificacao = {
         id: `notif-mensal-${Date.now()}`,
         tipo: 'notificacao_mensal',
@@ -823,7 +842,6 @@ function App() {
       setAlertas(prev => [...prev, notificacao]);
       localStorage.setItem('ultimaNotificacaoMensal', hoje.toISOString());
       
-      // Enviar email de notificação
       sendEmailNotification('monthly_reminder', {
         titulo: notificacao.titulo,
         descricao: notificacao.descricao,
@@ -923,6 +941,13 @@ function App() {
             badge={alertas.filter(a => a.status === 'ativo').length}
           />
           <NavButton
+            icon={AlertCircle}
+            label="Ações Urgentes"
+            active={currentView === 'acoes-urgentes'}
+            onClick={() => setCurrentView('acoes-urgentes')}
+            badge={licitacoes.reduce((total, lic) => total + (lic.medicamentosComRisco || 0), 0)}
+          />
+          <NavButton
             icon={Calculator}
             label="Comparação Preços"
             active={currentView === 'comparacao'}
@@ -946,7 +971,7 @@ function App() {
               pmvgStatus={pmvgStatus}
               user={user}
               checkMonthlyNotifications={checkMonthlyNotifications}
-              openEmailConfig={openEmailConfig} // ✅ CORRIGIDO: Passar função
+              openEmailConfig={openEmailConfig}
             />
           )}
           {currentView === 'pmvg' && (
@@ -956,7 +981,7 @@ function App() {
               isAdmin={user.role === 'admin'}
               onUpdatePrecoFabrica={updatePrecoFabrica}
               searchMedicamentos={searchMedicamentos}
-              testConnectivity={testConnectivity} // ✅ NOVO: Passar função de teste
+              testConnectivity={testConnectivity}
             />
           )}
           {currentView === 'licitacoes' && (
@@ -964,6 +989,7 @@ function App() {
               licitacoes={licitacoes}
               onOpenModal={openModal}
               onDelete={deleteLicitacao}
+              onVisualizar={openVisualizarModal}
               user={user}
             />
           )}
@@ -972,6 +998,15 @@ function App() {
               alertas={alertas}
               pmvgStatus={pmvgStatus}
               onResolverAlerta={resolverAlerta}
+            />
+          )}
+          {currentView === 'acoes-urgentes' && (
+            <AcoesUrgentesView 
+              licitacoes={licitacoes}
+              alertas={alertas}
+              onOpenModal={openModal}
+              onVisualizar={openVisualizarModal}
+              user={user}
             />
           )}
           {currentView === 'comparacao' && (
@@ -1001,7 +1036,7 @@ function App() {
         />
       )}
 
-      {/* ✅ NOVO: Modal de Configuração de Email */}
+      {/* Modal de Configuração de Email */}
       {showEmailModal && (
         <EmailConfigModal 
           emailConfig={emailConfig}
@@ -1014,7 +1049,7 @@ function App() {
   );
 }
 
-// ✅ NOVO: Componente Modal de Configuração de Email
+// Componente Modal de Configuração de Email
 const EmailConfigModal = ({ emailConfig, setEmailConfig, onSave, onClose }) => (
   <div style={styles.modal}>
     <div style={styles.modalContent}>
@@ -1204,12 +1239,25 @@ const NavButton = ({ icon: Icon, label, active, onClick, badge }) => (
   </button>
 );
 
+// Componente de Cartão de Estatística
+const StatCard = ({ title, value, icon: Icon, color, subtitle }) => (
+  <div style={styles.statCard}>
+    <div style={{ ...styles.statIcon, ...styles[`statIcon${color.charAt(0).toUpperCase() + color.slice(1)}`] }}>
+      <Icon size={24} />
+    </div>
+    <div style={styles.statText}>
+      <h4 style={styles.statTitle}>{title}</h4>
+      <p style={styles.statValue}>{value}</p>
+      <p style={styles.statSubtitle}>{subtitle}</p>
+    </div>
+  </div>
+);
+
 // Dashboard View
 const DashboardView = ({ systemStatus, licitacoes, alertas, pmvgStatus, user, checkMonthlyNotifications, openEmailConfig }) => {
   const alertasAtivos = alertas.filter(a => a.status === 'ativo');
   const licitacoesAtivas = licitacoes.filter(l => l.status === 'ativa');
   
-  // Cálculo de riscos contratuais
   const medicamentosComRisco = licitacoes.reduce((total, lic) => {
     return total + (lic.medicamentosComRisco || 0);
   }, 0);
@@ -1396,7 +1444,7 @@ const DashboardView = ({ systemStatus, licitacoes, alertas, pmvgStatus, user, ch
               Testar Notificação
             </button>
             <button 
-              onClick={openEmailConfig} // ✅ CORRIGIDO: Função agora funciona
+              onClick={openEmailConfig}
               style={{ ...styles.button, ...styles.buttonPrimary }}
             >
               <Settings size={16} />
@@ -1467,7 +1515,6 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
     'Anti-inflamatório', 'Antidiabético', 'Hipolipemiante', 'Diurético'
   ];
 
-  // ✅ CORRIGIDO: Verificação de conectividade com backend
   const checkBackendConnectivity = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/health`, {
@@ -1487,7 +1534,6 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
     if (term.length >= 2) {
       setIsSearching(true);
       try {
-        // ✅ NOVO: Verificar conectividade primeiro
         const isBackendConnected = await checkBackendConnectivity();
         if (!isBackendConnected) {
           setSearchResults([]);
@@ -1513,15 +1559,12 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
     }
   };
 
-  // ✅ CORRIGIDO: Cálculo correto da próxima atualização (dia 28)
   const proximaAtualizacao = new Date();
   const hoje = new Date();
   
-  // Se ainda não chegou no dia 28 deste mês, próxima será este mês
   if (hoje.getDate() <= 28) {
     proximaAtualizacao.setDate(28);
   } else {
-    // Se já passou do dia 28, próxima será no mês seguinte
     proximaAtualizacao.setMonth(proximaAtualizacao.getMonth() + 1);
     proximaAtualizacao.setDate(28);
   }
@@ -1531,7 +1574,6 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
       <div style={styles.card}>
         <h2 style={styles.cardTitle}>Base de Dados PMVG - ANVISA</h2>
         
-        {/* ✅ CORRIGIDO: Status da Atualização com diagnóstico */}
         <div style={{ 
           background: pmvgStatus?.totalMedicamentos > 0 ? 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)' : 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
           borderLeft: `4px solid ${pmvgStatus?.totalMedicamentos > 0 ? '#16a34a' : '#dc2626'}`,
@@ -1581,7 +1623,6 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
           )}
         </div>
         
-        {/* Busca Inteligente */}
         <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
             <div style={{ flex: 1, position: 'relative' }}>
@@ -1620,7 +1661,6 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
-            {/* ✅ NOVO: Botão para testar conectividade */}
             <button
               onClick={testConnectivity}
               disabled={loading}
@@ -1641,7 +1681,6 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
           </div>
         </div>
 
-        {/* Resultados da Busca */}
         {searchTerm.length >= 2 && (
           <div style={{ marginBottom: '1.5rem' }}>
             <h4 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: '600' }}>
@@ -1708,7 +1747,6 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
           </div>
         )}
 
-        {/* ✅ CORRIGIDO: Instruções com diagnóstico */}
         {searchTerm.length < 2 && (
           <div style={{ 
             padding: '3rem 1rem', 
@@ -1783,7 +1821,7 @@ const PMVGView = ({ pmvgStatus, loading, isAdmin, onUpdatePrecoFabrica, searchMe
 };
 
 // Licitações View com busca inteligente
-const LicitacoesView = ({ licitacoes, onOpenModal, onDelete, user }) => (
+const LicitacoesView = ({ licitacoes, onOpenModal, onDelete, onVisualizar, user }) => (
   <div>
     <div style={styles.card}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -1861,7 +1899,10 @@ const LicitacoesView = ({ licitacoes, onOpenModal, onDelete, user }) => (
                       <Edit size={16} />
                       Editar
                     </button>
-                    <button style={{ ...styles.button, ...styles.buttonPrimary }}>
+                    <button 
+                      onClick={() => onVisualizar(licitacao)}
+                      style={{ ...styles.button, ...styles.buttonPrimary }}
+                    >
                       <Eye size={16} />
                       Visualizar
                     </button>
@@ -1877,7 +1918,6 @@ const LicitacoesView = ({ licitacoes, onOpenModal, onDelete, user }) => (
                   </div>
                 </div>
                 
-                {/* Alertas de Risco */}
                 {medicamentosComRisco > 0 && (
                   <div style={{ ...styles.alert, ...styles.alertWarning, margin: '0 0 1rem 0', padding: '0.75rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1943,7 +1983,6 @@ const AlertasView = ({ alertas, pmvgStatus, onResolverAlerta }) => {
           </div>
         </div>
 
-        {/* Resumo de Alertas */}
         <div style={styles.statsGrid}>
           <StatCard
             title="Alertas Ativos"
@@ -1975,7 +2014,6 @@ const AlertasView = ({ alertas, pmvgStatus, onResolverAlerta }) => {
           />
         </div>
 
-        {/* Lista de Alertas */}
         <div style={{ display: 'grid', gap: '1rem' }}>
           {alertasAtivos.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
@@ -2041,48 +2079,272 @@ const AlertasView = ({ alertas, pmvgStatus, onResolverAlerta }) => {
   );
 };
 
-// Comparação View com busca real
+// Central de Ações Urgentes
+const AcoesUrgentesView = ({ licitacoes, alertas, onOpenModal, onVisualizar, user }) => {
+  const [filtroRisco, setFiltroRisco] = useState('todos');
+  
+  const medicamentosEmRisco = licitacoes.reduce((acc, licitacao) => {
+    if (licitacao.medicamentos) {
+      licitacao.medicamentos.forEach(med => {
+        const precoFabrica = med.precoFabricaEditavel || med.precoFabrica || 0;
+        const precoOfertado = med.precoOfertado || 0;
+        const isAcimaPMVG = precoOfertado > med.pmvg;
+        const temRiscoContratual = precoFabrica > precoOfertado;
+        
+        if (isAcimaPMVG || temRiscoContratual) {
+          acc.push({
+            ...med,
+            licitacao: licitacao.numero,
+            licitacaoId: licitacao.id,
+            orgao: licitacao.orgao,
+            dataVencimento: licitacao.dataVencimento,
+            tipoRisco: isAcimaPMVG ? 'pmvg' : 'contratual',
+            severidade: isAcimaPMVG ? 'critica' : 'alta',
+            valorRisco: isAcimaPMVG ? 
+              (precoOfertado - med.pmvg) * (med.quantidade || 1) :
+              (precoFabrica - precoOfertado) * (med.quantidade || 1)
+          });
+        }
+      });
+    }
+    return acc;
+  }, []);
+
+  const medicamentosFiltrados = medicamentosEmRisco.filter(med => {
+    if (filtroRisco === 'todos') return true;
+    if (filtroRisco === 'pmvg') return med.tipoRisco === 'pmvg';
+    if (filtroRisco === 'contratual') return med.tipoRisco === 'contratual';
+    return true;
+  });
+
+  const riscosPmvg = medicamentosEmRisco.filter(m => m.tipoRisco === 'pmvg').length;
+  const riscosContratuais = medicamentosEmRisco.filter(m => m.tipoRisco === 'contratual').length;
+  const valorTotalRisco = medicamentosEmRisco.reduce((acc, med) => acc + (med.valorRisco || 0), 0);
+
+  return (
+    <div>
+      <div style={styles.card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <h2 style={styles.cardTitle}>🚨 Central de Ações Urgentes</h2>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <select
+              value={filtroRisco}
+              onChange={(e) => setFiltroRisco(e.target.value)}
+              style={styles.select}
+            >
+              <option value="todos">Todos os Riscos</option>
+              <option value="pmvg">Acima PMVG (Multa)</option>
+              <option value="contratual">Risco Contratual</option>
+            </select>
+            <button style={{ ...styles.button, ...styles.buttonPrimary }}>
+              <RefreshCw size={16} />
+              Atualizar
+            </button>
+          </div>
+        </div>
+
+        <div style={styles.statsGrid}>
+          <StatCard
+            title="Medicamentos em Risco"
+            value={medicamentosEmRisco.length}
+            icon={AlertTriangle}
+            color="red"
+            subtitle="Ação urgente necessária"
+          />
+          <StatCard
+            title="Riscos de Multa"
+            value={riscosPmvg}
+            icon={AlertCircle}
+            color="red"
+            subtitle="Preço acima PMVG"
+          />
+          <StatCard
+            title="Riscos Contratuais"
+            value={riscosContratuais}
+            icon={XCircle}
+            color="yellow"
+            subtitle="Preço fábrica > ofertado"
+          />
+          <StatCard
+            title="Exposição Financeira"
+            value={`R$ ${valorTotalRisco.toLocaleString('pt-BR')}`}
+            icon={DollarSign}
+            color="red"
+            subtitle="Valor total em risco"
+          />
+        </div>
+
+        {medicamentosFiltrados.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+            <CheckCircle size={64} style={{ margin: '0 auto 1rem', color: '#16a34a' }} />
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem' }}>Nenhum Risco Detectado</h3>
+            <p style={{ margin: 0 }}>Todos os medicamentos estão dentro dos parâmetros de segurança</p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            {medicamentosFiltrados.map((med, index) => (
+              <div key={`${med.licitacaoId}-${med.codigo || index}`} style={{ 
+                border: '1px solid #e5e7eb', 
+                borderRadius: '8px', 
+                padding: '1.5rem',
+                borderLeft: `4px solid ${med.tipoRisco === 'pmvg' ? '#dc2626' : '#d97706'}`
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      {med.tipoRisco === 'pmvg' ? (
+                        <AlertTriangle size={16} style={{ color: '#dc2626' }} />
+                      ) : (
+                        <XCircle size={16} style={{ color: '#d97706' }} />
+                      )}
+                      <h4 style={{ margin: 0, fontWeight: '600', color: '#1f2937', fontSize: '1.125rem' }}>
+                        {med.nome}
+                      </h4>
+                      <span style={{ 
+                        fontSize: '0.75rem', 
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '4px',
+                        backgroundColor: med.tipoRisco === 'pmvg' ? '#fee2e2' : '#fef3c7',
+                        color: med.tipoRisco === 'pmvg' ? '#dc2626' : '#d97706'
+                      }}>
+                        {med.tipoRisco === 'pmvg' ? 'MULTA' : 'CONTRATUAL'}
+                      </span>
+                    </div>
+                    
+                    <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1rem' }}>
+                      <p style={{ margin: '0 0 0.5rem 0' }}>
+                        <strong>Licitação:</strong> {med.licitacao} - {med.orgao}
+                      </p>
+                      <p style={{ margin: '0 0 0.5rem 0' }}>
+                        <strong>Laboratório:</strong> {med.laboratorio} | <strong>Código:</strong> {med.codigo}
+                      </p>
+                      <p style={{ margin: 0 }}>
+                        <strong>Risco:</strong> {med.tipoRisco === 'pmvg' ? 
+                          `Preço ofertado R$ ${((med.precoOfertado || 0) - med.pmvg).toFixed(2)} acima da PMVG` :
+                          `Preço fábrica R$ ${((med.precoFabricaEditavel || med.precoFabrica || 0) - (med.precoOfertado || 0)).toFixed(2)} acima do ofertado`
+                        }
+                      </p>
+                    </div>
+                    
+                    <div style={{ 
+                      backgroundColor: '#f9fafb', 
+                      padding: '0.75rem', 
+                      borderRadius: '6px',
+                      fontSize: '0.875rem'
+                    }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                        <div>
+                          <strong>PMVG:</strong> R$ {med.pmvg.toFixed(2)}
+                        </div>
+                        <div>
+                          <strong>Preço Fábrica:</strong> R$ {(med.precoFabricaEditavel || med.precoFabrica || 0).toFixed(2)}
+                        </div>
+                        <div>
+                          <strong>Preço Ofertado:</strong> R$ {(med.precoOfertado || 0).toFixed(2)}
+                        </div>
+                      </div>
+                      <div style={{ marginTop: '0.5rem', color: '#dc2626', fontWeight: '500' }}>
+                        <strong>Exposição Financeira:</strong> R$ {(med.valorRisco || 0).toFixed(2)}
+                      </div>
+                    </div>
+                    
+                    <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#fef3c7', borderRadius: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <Target size={14} style={{ color: '#d97706' }} />
+                        <strong style={{ color: '#92400e' }}>Ação Recomendada:</strong>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.875rem', color: '#92400e' }}>
+                        {med.tipoRisco === 'pmvg' ? 
+                          'Revisar preço ofertado para evitar multa ANVISA. Contatar órgão licitante imediatamente.' :
+                          'Atualizar preço de fábrica ou renegociar preço ofertado para evitar prejuízo contratual.'
+                        }
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginLeft: '1rem' }}>
+                    <button 
+                      onClick={() => onVisualizar(licitacoes.find(l => l.id === med.licitacaoId))}
+                      style={{ ...styles.button, ...styles.buttonSecondary }}
+                    >
+                      <Eye size={16} />
+                      Ver Licitação
+                    </button>
+                    <button 
+                      onClick={() => onOpenModal('licitacao', licitacoes.find(l => l.id === med.licitacaoId))}
+                      style={{ ...styles.button, ...styles.buttonWarning }}
+                    >
+                      <Edit size={16} />
+                      Corrigir
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Comparação View
 const ComparacaoView = ({ licitacoes, searchMedicamentos }) => {
-  const [selectedMedicamento, setSelectedMedicamento] = useState(null);
-  const [selectedLicitacao, setSelectedLicitacao] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  
+  const [selectedMed, setSelectedMed] = useState(null);
+  const [precoComparacao, setPrecoComparacao] = useState('');
+
   const handleSearch = async (term) => {
     setSearchTerm(term);
-    
     if (term.length >= 2) {
-      setIsSearching(true);
-      try {
-        const results = await searchMedicamentos(term);
-        setSearchResults(results.slice(0, 10)); // Limitar a 10 resultados
-      } catch (error) {
-        console.error('Erro na busca:', error);
-        setSearchResults([]);
-      } finally {
-        setIsSearching(false);
-      }
+      const results = await searchMedicamentos(term);
+      setSearchResults(results);
     } else {
       setSearchResults([]);
     }
   };
 
-  const selectMedicamento = (medicamento) => {
-    setSelectedMedicamento(medicamento);
-    setSearchTerm(medicamento.nome);
-    setSearchResults([]);
+  const analisarPreco = (medicamento, precoTeste) => {
+    const preco = parseFloat(precoTeste);
+    const pmvg = medicamento.pmvg;
+    const precoFabrica = medicamento.precoFabrica || 0;
+    
+    const isAcimaPMVG = preco > pmvg;
+    const temRiscoContratual = precoFabrica > preco;
+    
+    let status = 'conforme';
+    let cor = '#16a34a';
+    let icone = CheckCircle;
+    let mensagem = 'Preço dentro dos parâmetros de segurança';
+    
+    if (isAcimaPMVG) {
+      status = 'risco_multa';
+      cor = '#dc2626';
+      icone = AlertTriangle;
+      mensagem = `Risco de multa! Preço R$ ${(preco - pmvg).toFixed(2)} acima da PMVG`;
+    } else if (temRiscoContratual) {
+      status = 'risco_contratual';
+      cor = '#d97706';
+      icone = XCircle;
+      mensagem = `Risco contratual! Preço de fábrica R$ ${(precoFabrica - preco).toFixed(2)} acima do ofertado`;
+    }
+    
+    return { status, cor, icone, mensagem, isAcimaPMVG, temRiscoContratual };
   };
 
   return (
     <div>
       <div style={styles.card}>
-        <h2 style={styles.cardTitle}>Comparação Inteligente de Preços</h2>
+        <h2 style={styles.cardTitle}>Comparação de Preços PMVG</h2>
         
-        <div style={styles.formGroupRow}>
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Buscar Medicamento</label>
-            <div style={{ position: 'relative' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1.125rem', fontWeight: '600', marginBottom: '1rem' }}>
+              Buscar Medicamento
+            </h3>
+            
+            <div style={{ position: 'relative', marginBottom: '1rem' }}>
               <Search size={16} style={{ 
                 position: 'absolute', 
                 left: '0.75rem', 
@@ -2097,43 +2359,22 @@ const ComparacaoView = ({ licitacoes, searchMedicamentos }) => {
                 onChange={(e) => handleSearch(e.target.value)}
                 style={{ ...styles.input, paddingLeft: '2.5rem' }}
               />
-              {isSearching && (
-                <RefreshCw size={16} style={{ 
-                  position: 'absolute', 
-                  right: '0.75rem', 
-                  top: '50%', 
-                  transform: 'translateY(-50%)', 
-                  color: '#2563eb',
-                  animation: 'spin 1s linear infinite'
-                }} />
-              )}
             </div>
             
-            {/* Resultados da busca */}
             {searchResults.length > 0 && (
-              <div style={{ 
-                position: 'absolute', 
-                zIndex: 10, 
-                backgroundColor: 'white', 
-                border: '1px solid #e5e7eb', 
-                borderRadius: '6px',
-                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                maxHeight: '200px',
-                overflowY: 'auto',
-                width: '100%',
-                marginTop: '0.25rem'
-              }}>
-                {searchResults.map(med => (
-                  <div
+              <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
+                {searchResults.slice(0, 10).map(med => (
+                  <div 
                     key={med.id || med.codigo}
-                    onClick={() => selectMedicamento(med)}
-                    style={styles.searchResult}
-                    onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f9ff'}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                    onClick={() => setSelectedMed(med)}
+                    style={{ 
+                      ...styles.searchResult,
+                      ...(selectedMed?.codigo === med.codigo ? styles.searchResultSelected : {})
+                    }}
                   >
-                    <div style={{ fontWeight: '500', fontSize: '0.875rem' }}>{med.nome}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                      {med.laboratorio} - PMVG: R$ {med.pmvg.toFixed(2)}
+                    <div style={{ fontWeight: '500' }}>{med.nome}</div>
+                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                      {med.laboratorio} | PMVG: R$ {med.pmvg.toFixed(2)}
                     </div>
                   </div>
                 ))}
@@ -2141,118 +2382,98 @@ const ComparacaoView = ({ licitacoes, searchMedicamentos }) => {
             )}
           </div>
           
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Licitação (Opcional)</label>
-            <select
-              value={selectedLicitacao}
-              onChange={(e) => setSelectedLicitacao(e.target.value)}
-              style={styles.select}
-            >
-              <option value="">Análise geral</option>
-              {licitacoes.map(lic => (
-                <option key={lic.id} value={lic.id}>
-                  {lic.numero} - {lic.orgao}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {selectedMedicamento && (
-          <div style={{ marginTop: '2rem' }}>
-            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: '600' }}>
-              Análise de Preços: {selectedMedicamento.nome}
+          <div>
+            <h3 style={{ fontSize: '1.125rem', fontWeight: '600', marginBottom: '1rem' }}>
+              Análise de Preço
             </h3>
             
-            <div style={styles.priceComparison}>
-              <div style={styles.priceBox}>
-                <div style={styles.priceLabel}>Preço PMVG (Máximo)</div>
-                <div style={{ ...styles.priceValue, color: '#2563eb' }}>
-                  R$ {selectedMedicamento.pmvg.toFixed(2)}
-                </div>
-                <div style={{ ...styles.priceChange, color: '#2563eb' }}>
-                  <Shield size={14} />
-                  Referência ANVISA
-                </div>
-              </div>
-              
-              <div style={styles.priceBox}>
-                <div style={styles.priceLabel}>Preço de Fábrica</div>
+            {selectedMed ? (
+              <div>
                 <div style={{ 
-                  ...styles.priceValue, 
-                  color: selectedMedicamento.precoFabrica > selectedMedicamento.pmvg ? '#dc2626' : '#16a34a' 
+                  backgroundColor: '#f9fafb', 
+                  padding: '1rem', 
+                  borderRadius: '6px',
+                  marginBottom: '1rem'
                 }}>
-                  R$ {(selectedMedicamento.precoFabrica || 0).toFixed(2)}
-                </div>
-                <div style={{ ...styles.priceChange, color: '#6b7280' }}>
-                  <Calendar size={14} />
-                  Editável pelo cliente
-                </div>
-              </div>
-              
-              <div style={styles.priceBox}>
-                <div style={styles.priceLabel}>Preço Sugerido</div>
-                <div style={{ ...styles.priceValue, color: '#16a34a' }}>
-                  R$ {(selectedMedicamento.pmvg * 0.95).toFixed(2)}
-                </div>
-                <div style={{ ...styles.priceChange, color: '#16a34a' }}>
-                  <Award size={14} />
-                  95% da PMVG
-                </div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '6px' }}>
-              <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', fontWeight: '600', color: '#1f2937' }}>
-                Análise de Conformidade Anti-Multa
-              </h4>
-              
-              {selectedMedicamento.precoFabrica && selectedMedicamento.precoFabrica > selectedMedicamento.pmvg ? (
-                <div style={{ ...styles.alert, ...styles.alertError, margin: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <XCircle size={16} />
-                    <strong>⚠️ RISCO DE MULTA</strong>
-                  </div>
-                  <p style={{ margin: '0.5rem 0 0 0' }}>
-                    Preço de fábrica (R$ {selectedMedicamento.precoFabrica.toFixed(2)}) está 
-                    R$ {(selectedMedicamento.precoFabrica - selectedMedicamento.pmvg).toFixed(2)} 
-                    acima da PMVG. Não oferte acima de R$ {selectedMedicamento.pmvg.toFixed(2)}.
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#1f2937' }}>{selectedMed.nome}</h4>
+                  <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#6b7280' }}>
+                    {selectedMed.laboratorio} | {selectedMed.apresentacao}
+                  </p>
+                  <p style={{ margin: 0, fontSize: '0.875rem', color: '#16a34a', fontWeight: '500' }}>
+                    PMVG: R$ {selectedMed.pmvg.toFixed(2)}
                   </p>
                 </div>
-              ) : (
-                <div style={{ ...styles.alert, ...styles.alertSuccess, margin: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <CheckCircle size={16} />
-                    <strong>✅ CONFORME</strong>
-                  </div>
-                  <p style={{ margin: '0.5rem 0 0 0' }}>
-                    Medicamento está dentro dos parâmetros da PMVG. 
-                    Margem disponível: R$ {(selectedMedicamento.pmvg - (selectedMedicamento.precoFabrica || 0)).toFixed(2)} por unidade.
-                  </p>
+                
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={styles.label}>Preço para Análise</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={precoComparacao}
+                    onChange={(e) => setPrecoComparacao(e.target.value)}
+                    style={styles.input}
+                    placeholder="Digite o preço para comparar..."
+                  />
                 </div>
-              )}
-            </div>
+                
+                {precoComparacao && (
+                  <div>
+                    {(() => {
+                      const analise = analisarPreco(selectedMed, precoComparacao);
+                      const IconeAnalise = analise.icone;
+                      
+                      return (
+                        <div style={{ 
+                          padding: '1rem', 
+                          borderRadius: '6px',
+                          border: `2px solid ${analise.cor}`,
+                          backgroundColor: `${analise.cor}10`
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                            <IconeAnalise size={20} style={{ color: analise.cor }} />
+                            <h4 style={{ margin: 0, color: analise.cor, textTransform: 'uppercase' }}>
+                              {analise.status.replace('_', ' ')}
+                            </h4>
+                          </div>
+                          
+                          <p style={{ margin: '0 0 1rem 0', color: analise.cor, fontWeight: '500' }}>
+                            {analise.mensagem}
+                          </p>
+                          
+                          <div style={styles.priceComparison}>
+                            <div style={styles.priceBox}>
+                              <div style={styles.priceLabel}>PMVG Oficial</div>
+                              <div style={{ ...styles.priceValue, color: '#16a34a' }}>
+                                R$ {selectedMed.pmvg.toFixed(2)}
+                              </div>
+                            </div>
+                            <div style={styles.priceBox}>
+                              <div style={styles.priceLabel}>Preço Testado</div>
+                              <div style={{ ...styles.priceValue, color: analise.cor }}>
+                                R$ {parseFloat(precoComparacao).toFixed(2)}
+                              </div>
+                            </div>
+                            <div style={styles.priceBox}>
+                              <div style={styles.priceLabel}>Diferença</div>
+                              <div style={{ ...styles.priceValue, color: analise.cor }}>
+                                R$ {Math.abs(parseFloat(precoComparacao) - selectedMed.pmvg).toFixed(2)}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                <Calculator size={48} style={{ margin: '0 auto 1rem', color: '#d1d5db' }} />
+                <p>Selecione um medicamento para iniciar a análise</p>
+              </div>
+            )}
           </div>
-        )}
-
-        {!selectedMedicamento && searchTerm.length < 2 && (
-          <div style={{ 
-            padding: '3rem 1rem', 
-            textAlign: 'center', 
-            backgroundColor: '#f9fafb', 
-            borderRadius: '8px',
-            border: '2px dashed #e5e7eb',
-            marginTop: '2rem'
-          }}>
-            <Calculator size={64} style={{ margin: '0 auto 1rem', color: '#d1d5db' }} />
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem', color: '#374151' }}>
-              Análise de Preços PMVG
-            </h3>
-            <p style={{ margin: 0, color: '#6b7280' }}>
-              Digite o nome do medicamento acima para analisar conformidade com PMVG
-            </p>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -2260,141 +2481,111 @@ const ComparacaoView = ({ licitacoes, searchMedicamentos }) => {
 
 // Relatórios View
 const RelatoriosView = ({ licitacoes, alertas, onExport }) => {
-  const [selectedReport, setSelectedReport] = useState('');
-  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [selectedPeriod, setSelectedPeriod] = useState('mes');
+  const [selectedType, setSelectedType] = useState('geral');
 
-  const reportTypes = [
-    { id: 'compliance', name: 'Relatório de Conformidade PMVG', description: 'Análise completa de conformidade anti-multa' },
-    { id: 'licitacoes', name: 'Relatório de Licitações', description: 'Resumo detalhado das licitações e riscos' },
-    { id: 'economia', name: 'Relatório de Economia', description: 'Análise de economia e oportunidades' },
-    { id: 'alertas', name: 'Relatório de Alertas', description: 'Histórico de alertas e ações preventivas' },
-    { id: 'auditoria', name: 'Relatório de Auditoria', description: 'Documentação para compliance jurídico' }
-  ];
+  const estatisticas = {
+    licitacoesTotal: licitacoes.length,
+    licitacoesAtivas: licitacoes.filter(l => l.status === 'ativa').length,
+    alertasAtivos: alertas.filter(a => a.status === 'ativo').length,
+    medicamentosTotal: licitacoes.reduce((acc, lic) => acc + (lic.totalMedicamentos || 0), 0),
+    medicamentosRisco: licitacoes.reduce((acc, lic) => acc + (lic.medicamentosComRisco || 0), 0),
+    economiaTotal: licitacoes.reduce((acc, lic) => acc + (lic.economiaTotal || 0), 0)
+  };
 
   return (
     <div>
       <div style={styles.card}>
-        <h2 style={styles.cardTitle}>Central de Relatórios e Compliance</h2>
+        <h2 style={styles.cardTitle}>Relatórios e Análises</h2>
         
-        <div style={styles.formGroupRow}>
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Tipo de Relatório</label>
-            <select
-              value={selectedReport}
-              onChange={(e) => setSelectedReport(e.target.value)}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+          <div>
+            <label style={styles.label}>Período</label>
+            <select 
+              value={selectedPeriod} 
+              onChange={(e) => setSelectedPeriod(e.target.value)}
               style={styles.select}
             >
-              <option value="">Selecione um relatório...</option>
-              {reportTypes.map(report => (
-                <option key={report.id} value={report.id}>{report.name}</option>
-              ))}
+              <option value="semana">Última Semana</option>
+              <option value="mes">Último Mês</option>
+              <option value="trimestre">Último Trimestre</option>
+              <option value="ano">Último Ano</option>
             </select>
           </div>
           
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Período (Opcional)</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-              <input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                style={styles.input}
-              />
-              <input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                style={styles.input}
-              />
-            </div>
+          <div>
+            <label style={styles.label}>Tipo de Relatório</label>
+            <select 
+              value={selectedType} 
+              onChange={(e) => setSelectedType(e.target.value)}
+              style={styles.select}
+            >
+              <option value="geral">Relatório Geral</option>
+              <option value="compliance">Compliance PMVG</option>
+              <option value="riscos">Análise de Riscos</option>
+              <option value="economia">Economia Gerada</option>
+            </select>
           </div>
         </div>
-
-        {selectedReport && (
-          <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '6px' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', fontWeight: '600' }}>
-              {reportTypes.find(r => r.id === selectedReport)?.name}
-            </h4>
-            <p style={{ margin: '0 0 1rem 0', color: '#6b7280' }}>
-              {reportTypes.find(r => r.id === selectedReport)?.description}
-            </p>
-            
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                onClick={() => onExport(selectedReport, 'pdf')}
-                style={{ ...styles.button, ...styles.buttonPrimary }}
-              >
-                <FileDown size={16} />
-                Exportar PDF
-              </button>
-              <button
-                onClick={() => onExport(selectedReport, 'excel')}
-                style={{ ...styles.button, ...styles.buttonSuccess }}
-              >
-                <Download size={16} />
-                Exportar Excel
-              </button>
-              <button
-                onClick={() => onExport(selectedReport, 'csv')}
-                style={{ ...styles.button, ...styles.buttonSecondary }}
-              >
-                <FileSpreadsheet size={16} />
-                Exportar CSV
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Relatórios Rápidos */}
-      <div style={styles.card}>
-        <h3 style={{ ...styles.cardTitle, fontSize: '1.125rem' }}>Dashboard de Compliance</h3>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '1rem' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Shield size={20} color="#2563eb" />
-              Status Anti-Multa
-            </h4>
-            <p style={{ margin: '0 0 1rem 0', fontSize: '0.875rem', color: '#6b7280' }}>
-              Visão geral dos riscos de multa e conformidade
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.875rem' }}>
-              <div>Licitações: <strong>{licitacoes.length}</strong></div>
-              <div>Alertas: <strong>{alertas.length}</strong></div>
-              <div style={{ color: '#16a34a' }}>Conformes: <strong>{licitacoes.filter(l => !l.temRiscos).length}</strong></div>
-              <div style={{ color: '#dc2626' }}>Em Risco: <strong>{licitacoes.filter(l => l.temRiscos).length}</strong></div>
-            </div>
-          </div>
-
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '1rem' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <TrendingDown size={20} color="#16a34a" />
-              Economia Realizada
-            </h4>
-            <p style={{ margin: '0 0 1rem 0', fontSize: '0.875rem', color: '#6b7280' }}>
-              Total de economia com preços otimizados
-            </p>
-            <div style={{ fontSize: '0.875rem' }}>
-              <div>Economia Total: <strong style={{ color: '#16a34a' }}>
-                R$ {licitacoes.reduce((acc, lic) => acc + (lic.economiaTotal || 0), 0).toLocaleString('pt-BR')}
-              </strong></div>
-              <div>Margem Média: <strong>12.5%</strong></div>
-            </div>
-          </div>
-
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '1rem' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Activity size={20} color="#d97706" />
-              Monitoramento
-            </h4>
-            <p style={{ margin: '0 0 1rem 0', fontSize: '0.875rem', color: '#6b7280' }}>
-              Status do sistema de monitoramento automático
-            </p>
-            <div style={{ fontSize: '0.875rem' }}>
-              <div>Base PMVG: <strong style={{ color: '#16a34a' }}>✅ Atualizada</strong></div>
-              <div>Alertas: <strong style={{ color: '#2563eb' }}>🔄 Ativos</strong></div>
-            </div>
+        <div style={styles.statsGrid}>
+          <StatCard
+            title="Licitações Gerenciadas"
+            value={estatisticas.licitacoesTotal}
+            icon={FileText}
+            color="blue"
+            subtitle={`${estatisticas.licitacoesAtivas} ativas`}
+          />
+          <StatCard
+            title="Medicamentos Analisados"
+            value={estatisticas.medicamentosTotal}
+            icon={Pill}
+            color="green"
+            subtitle={`${estatisticas.medicamentosRisco} em risco`}
+          />
+          <StatCard
+            title="Alertas Gerados"
+            value={estatisticas.alertasAtivos}
+            icon={AlertTriangle}
+            color="yellow"
+            subtitle="Requerem atenção"
+          />
+          <StatCard
+            title="Economia Total"
+            value={`R$ ${estatisticas.economiaTotal.toLocaleString('pt-BR')}`}
+            icon={DollarSign}
+            color="green"
+            subtitle="Valor economizado"
+          />
+        </div>
+        
+        <div style={styles.card}>
+          <h3 style={{ fontSize: '1.125rem', fontWeight: '600', marginBottom: '1rem' }}>
+            Exportar Relatórios
+          </h3>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+            <button 
+              onClick={() => onExport(selectedType, 'pdf')}
+              style={{ ...styles.button, ...styles.buttonPrimary }}
+            >
+              <FileDown size={16} />
+              Exportar PDF
+            </button>
+            <button 
+              onClick={() => onExport(selectedType, 'excel')}
+              style={{ ...styles.button, ...styles.buttonSuccess }}
+            >
+              <FileSpreadsheet size={16} />
+              Exportar Excel
+            </button>
+            <button 
+              onClick={() => onExport(selectedType, 'csv')}
+              style={{ ...styles.button, ...styles.buttonSecondary }}
+            >
+              <Download size={16} />
+              Exportar CSV
+            </button>
           </div>
         </div>
       </div>
@@ -2402,182 +2593,485 @@ const RelatoriosView = ({ licitacoes, alertas, onExport }) => {
   );
 };
 
-// Modal com busca inteligente e cadastro manual completo
+// Modal Principal
 const Modal = ({ type, data, searchMedicamentos, onClose, onSave }) => {
+  if (type === 'visualizar') {
+    return <VisualizarModal data={data} onClose={onClose} />;
+  }
+  
+  if (type === 'licitacao') {
+    return <LicitacaoModal data={data} searchMedicamentos={searchMedicamentos} onClose={onClose} onSave={onSave} />;
+  }
+  
+  return null;
+};
+
+// Modal de Visualização
+const VisualizarModal = ({ data, onClose }) => {
+  const [activeTab, setActiveTab] = useState('resumo');
+  
+  if (!data) return null;
+  
+  const medicamentos = data.medicamentos || [];
+  const medicamentosComRisco = medicamentos.filter(med => {
+    const precoFabrica = med.precoFabricaEditavel || med.precoFabrica || 0;
+    const precoOfertado = med.precoOfertado || 0;
+    return precoOfertado > med.pmvg || precoFabrica > precoOfertado;
+  });
+  
+  const valorTotal = medicamentos.reduce((acc, med) => acc + ((med.precoOfertado || 0) * (med.quantidade || 1)), 0);
+  const economiaTotal = medicamentos.reduce((acc, med) => acc + (med.economia || 0), 0);
+
+  return (
+    <div style={styles.modal}>
+      <div style={styles.modalContent}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Eye size={24} color="#2563eb" />
+            Visualizar Licitação - {data.numero}
+          </h3>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer' }}>
+            <X size={24} />
+          </button>
+        </div>
+
+        <div style={styles.tabs}>
+          <button 
+            style={{
+              ...styles.tab,
+              ...(activeTab === 'resumo' ? styles.tabActive : {})
+            }}
+            onClick={() => setActiveTab('resumo')}
+          >
+            Resumo Geral
+          </button>
+          <button 
+            style={{
+              ...styles.tab,
+              ...(activeTab === 'medicamentos' ? styles.tabActive : {})
+            }}
+            onClick={() => setActiveTab('medicamentos')}
+          >
+            Medicamentos ({medicamentos.length})
+          </button>
+          <button 
+            style={{
+              ...styles.tab,
+              ...(activeTab === 'analise' ? styles.tabActive : {})
+            }}
+            onClick={() => setActiveTab('analise')}
+          >
+            Análise de Conformidade
+          </button>
+        </div>
+
+        {activeTab === 'resumo' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+              <div>
+                <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: '600' }}>
+                  Dados da Licitação
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div>
+                    <strong>Número:</strong> {data.numero}
+                  </div>
+                  <div>
+                    <strong>Órgão:</strong> {data.orgao}
+                  </div>
+                  <div>
+                    <strong>Vigência:</strong> {data.vigencia}
+                  </div>
+                  <div>
+                    <strong>Valor Estimado:</strong> R$ {data.valor?.toLocaleString('pt-BR')}
+                  </div>
+                  <div>
+                    <strong>Data de Vencimento:</strong> {new Date(data.dataVencimento).toLocaleDateString('pt-BR')}
+                  </div>
+                  <div>
+                    <strong>Status:</strong> <span style={{ 
+                      color: data.status === 'ativa' ? '#16a34a' : '#6b7280',
+                      fontWeight: '500'
+                    }}>
+                      {data.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: '600' }}>
+                  Resumo Financeiro
+                </h4>
+                <div style={styles.priceComparison}>
+                  <div style={styles.priceBox}>
+                    <div style={styles.priceLabel}>Valor Total</div>
+                    <div style={{ ...styles.priceValue, color: '#2563eb' }}>
+                      R$ {valorTotal.toLocaleString('pt-BR')}
+                    </div>
+                  </div>
+                  <div style={styles.priceBox}>
+                    <div style={styles.priceLabel}>Economia</div>
+                    <div style={{ ...styles.priceValue, color: '#16a34a' }}>
+                      R$ {economiaTotal.toLocaleString('pt-BR')}
+                    </div>
+                  </div>
+                  <div style={styles.priceBox}>
+                    <div style={styles.priceLabel}>Medicamentos</div>
+                    <div style={{ ...styles.priceValue, color: '#1f2937' }}>
+                      {medicamentos.length}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {medicamentosComRisco.length > 0 && (
+              <div style={{ ...styles.alert, ...styles.alertWarning }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <AlertTriangle size={16} />
+                  <strong>Atenção: Medicamentos com Risco Detectado</strong>
+                </div>
+                <p style={{ margin: '0.5rem 0 0 0' }}>
+                  {medicamentosComRisco.length} medicamento(s) apresentam risco de multa ou problemas contratuais. 
+                  Verifique a aba "Análise de Conformidade" para detalhes.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'medicamentos' && (
+          <div>
+            <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: '600' }}>
+              Lista de Medicamentos
+            </h4>
+            
+            {medicamentos.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                <Pill size={48} style={{ margin: '0 auto 1rem', color: '#d1d5db' }} />
+                <p>Nenhum medicamento cadastrado nesta licitação</p>
+              </div>
+            ) : (
+              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Medicamento</th>
+                      <th style={styles.th}>PMVG</th>
+                      <th style={styles.th}>Preço Ofertado</th>
+                      <th style={styles.th}>Quantidade</th>
+                      <th style={styles.th}>Total</th>
+                      <th style={styles.th}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {medicamentos.map((med, index) => {
+                      const precoOfertado = med.precoOfertado || 0;
+                      const quantidade = med.quantidade || 1;
+                      const total = precoOfertado * quantidade;
+                      const isAcimaPMVG = precoOfertado > med.pmvg;
+                      
+                      return (
+                        <tr key={index}>
+                          <td style={styles.td}>
+                            <div>
+                              <div style={{ fontWeight: '500' }}>{med.nome}</div>
+                              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                                {med.laboratorio}
+                              </div>
+                            </div>
+                          </td>
+                          <td style={styles.td}>
+                            R$ {med.pmvg.toFixed(2)}
+                          </td>
+                          <td style={styles.td}>
+                            R$ {precoOfertado.toFixed(2)}
+                          </td>
+                          <td style={styles.td}>
+                            {quantidade}
+                          </td>
+                          <td style={styles.td}>
+                            R$ {total.toFixed(2)}
+                          </td>
+                          <td style={styles.td}>
+                            <span style={{ 
+                              padding: '0.25rem 0.5rem', 
+                              borderRadius: '4px', 
+                              fontSize: '0.75rem',
+                              backgroundColor: isAcimaPMVG ? '#fee2e2' : '#dcfce7',
+                              color: isAcimaPMVG ? '#dc2626' : '#16a34a'
+                            }}>
+                              {isAcimaPMVG ? 'RISCO' : 'OK'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'analise' && (
+          <div>
+            <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: '600' }}>
+              Análise de Conformidade PMVG
+            </h4>
+            
+            <div style={styles.statsGrid}>
+              <StatCard
+                title="Medicamentos Conformes"
+                value={medicamentos.length - medicamentosComRisco.length}
+                icon={CheckCircle}
+                color="green"
+                subtitle="Dentro dos parâmetros"
+              />
+              <StatCard
+                title="Medicamentos em Risco"
+                value={medicamentosComRisco.length}
+                icon={AlertTriangle}
+                color="red"
+                subtitle="Requerem atenção"
+              />
+              <StatCard
+                title="Taxa de Conformidade"
+                value={`${medicamentos.length > 0 ? Math.round(((medicamentos.length - medicamentosComRisco.length) / medicamentos.length) * 100) : 0}%`}
+                icon={Target}
+                color="blue"
+                subtitle="Percentual de conformidade"
+              />
+            </div>
+            
+            {medicamentosComRisco.length > 0 && (
+              <div>
+                <h5 style={{ margin: '1.5rem 0 1rem 0', fontSize: '1rem', fontWeight: '600' }}>
+                  Medicamentos que Requerem Atenção
+                </h5>
+                
+                <div style={{ display: 'grid', gap: '1rem' }}>
+                  {medicamentosComRisco.map((med, index) => {
+                    const precoFabrica = med.precoFabricaEditavel || med.precoFabrica || 0;
+                    const precoOfertado = med.precoOfertado || 0;
+                    const isAcimaPMVG = precoOfertado > med.pmvg;
+                    const temRiscoContratual = precoFabrica > precoOfertado;
+                    
+                    return (
+                      <div key={index} style={{ 
+                        border: '1px solid #e5e7eb', 
+                        borderRadius: '6px', 
+                        padding: '1rem',
+                        borderLeft: `4px solid ${isAcimaPMVG ? '#dc2626' : '#d97706'}`
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div>
+                            <h6 style={{ margin: '0 0 0.5rem 0', fontWeight: '500' }}>{med.nome}</h6>
+                            <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                              <div><strong>Laboratório:</strong> {med.laboratorio}</div>
+                              <div><strong>PMVG:</strong> R$ {med.pmvg.toFixed(2)}</div>
+                              <div><strong>Preço Ofertado:</strong> R$ {precoOfertado.toFixed(2)}</div>
+                              {precoFabrica > 0 && (
+                                <div><strong>Preço Fábrica:</strong> R$ {precoFabrica.toFixed(2)}</div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            {isAcimaPMVG && (
+                              <span style={{ 
+                                padding: '0.25rem 0.5rem', 
+                                borderRadius: '4px', 
+                                fontSize: '0.75rem',
+                                backgroundColor: '#fee2e2',
+                                color: '#dc2626'
+                              }}>
+                                RISCO DE MULTA
+                              </span>
+                            )}
+                            {temRiscoContratual && (
+                              <span style={{ 
+                                padding: '0.25rem 0.5rem', 
+                                borderRadius: '4px', 
+                                fontSize: '0.75rem',
+                                backgroundColor: '#fef3c7',
+                                color: '#d97706',
+                                marginLeft: '0.5rem'
+                              }}>
+                                RISCO CONTRATUAL
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: '#dc2626' }}>
+                          {isAcimaPMVG && (
+                            <div>⚠️ Preço R$ {(precoOfertado - med.pmvg).toFixed(2)} acima da PMVG</div>
+                          )}
+                          {temRiscoContratual && (
+                            <div>⚠️ Preço de fábrica R$ {(precoFabrica - precoOfertado).toFixed(2)} acima do ofertado</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
+          <button onClick={onClose} style={{ ...styles.button, ...styles.buttonSecondary }}>
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Modal de Licitação
+const LicitacaoModal = ({ data, searchMedicamentos, onClose, onSave }) => {
   const [activeTab, setActiveTab] = useState('dados-gerais');
-  const [formData, setFormData] = useState(data || {});
+  const [formData, setFormData] = useState({
+    numero: data?.numero || '',
+    orgao: data?.orgao || '',
+    vigencia: data?.vigencia || '',
+    valor: data?.valor || '',
+    dataPublicacao: data?.dataPublicacao || '',
+    dataVencimento: data?.dataVencimento || '',
+    status: data?.status || 'ativa',
+    observacoes: data?.observacoes || ''
+  });
+  
   const [selectedMedicamentos, setSelectedMedicamentos] = useState(data?.medicamentos || []);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [showManualForm, setShowManualForm] = useState(false);
-  const [manualMedicamento, setManualMedicamento] = useState({
+  const [manualMed, setManualMed] = useState({
     nome: '',
     laboratorio: '',
-    apresentacao: '',
-    categoria: '',
+    codigo: '',
     pmvg: '',
     precoFabrica: '',
-    codigo: '',
-    ultimaAtualizacao: new Date().toISOString().split('T')[0]
+    apresentacao: '',
+    categoria: 'Analgésico'
   });
 
-  const categorias = [
+  const categories = [
     'Analgésico', 'Antibiótico', 'Anti-hipertensivo', 'Antiácido', 
     'Anti-inflamatório', 'Antidiabético', 'Hipolipemiante', 'Diurético',
-    'Antialérgico', 'Broncodilatador', 'Anticoagulante', 'Antiepilético',
-    'Antifúngico', 'Vitamina', 'Ansiolítico', 'Antidepressivo', 'Hormônio'
+    'Antialérgico', 'Broncodilatador', 'Anticoagulante', 'Antidepressivo'
   ];
 
   const handleSearch = async (term) => {
     setSearchTerm(term);
-    
     if (term.length >= 2) {
-      setIsSearching(true);
-      try {
-        const results = await searchMedicamentos(term);
-        setSearchResults(results.slice(0, 20));
-      } catch (error) {
-        console.error('Erro na busca:', error);
-        setSearchResults([]);
-      } finally {
-        setIsSearching(false);
-      }
+      const results = await searchMedicamentos(term);
+      setSearchResults(results);
     } else {
       setSearchResults([]);
     }
   };
 
   const addMedicamento = (medicamento) => {
-    const exists = selectedMedicamentos.find(m => m.id === medicamento.id || m.codigo === medicamento.codigo);
+    const exists = selectedMedicamentos.find(m => m.codigo === medicamento.codigo);
     if (!exists) {
       setSelectedMedicamentos(prev => [...prev, {
         ...medicamento,
-        precoOfertado: medicamento.pmvg * 0.95, // Sugestão de 95% da PMVG
+        precoOfertado: 0,
         quantidade: 1,
-        precoFabricaEditavel: medicamento.precoFabrica || 0
+        origem: 'busca'
       }]);
-      setSearchTerm('');
-      setSearchResults([]);
     }
+    setSearchTerm('');
+    setSearchResults([]);
   };
 
   const addManualMedicamento = () => {
-    if (!manualMedicamento.nome || !manualMedicamento.pmvg || !manualMedicamento.precoFabrica) {
-      alert('Nome, PMVG e Preço de Fábrica são obrigatórios');
-      return;
+    if (manualMed.nome && manualMed.pmvg && manualMed.precoFabrica) {
+      const novoMed = {
+        ...manualMed,
+        id: Date.now(),
+        pmvg: parseFloat(manualMed.pmvg),
+        precoFabrica: parseFloat(manualMed.precoFabrica),
+        precoOfertado: 0,
+        quantidade: 1,
+        origem: 'manual'
+      };
+      
+      setSelectedMedicamentos(prev => [...prev, novoMed]);
+      setManualMed({
+        nome: '',
+        laboratorio: '',
+        codigo: '',
+        pmvg: '',
+        precoFabrica: '',
+        apresentacao: '',
+        categoria: 'Analgésico'
+      });
+      setShowManualForm(false);
     }
-
-    const novoMedicamento = {
-      id: `manual-${Date.now()}`,
-      codigo: manualMedicamento.codigo || `MAN${Date.now()}`,
-      nome: manualMedicamento.nome,
-      laboratorio: manualMedicamento.laboratorio || 'Informado pelo Cliente',
-      apresentacao: manualMedicamento.apresentacao || 'Conforme embalagem',
-      categoria: manualMedicamento.categoria || 'Outros',
-      pmvg: parseFloat(manualMedicamento.pmvg),
-      precoFabrica: parseFloat(manualMedicamento.precoFabrica),
-      precoFabricaEditavel: parseFloat(manualMedicamento.precoFabrica),
-      precoOfertado: parseFloat(manualMedicamento.pmvg) * 0.95,
-      quantidade: 1,
-      ultimaAtualizacao: manualMedicamento.ultimaAtualizacao,
-      manual: true,
-      editavel: true
-    };
-
-    setSelectedMedicamentos(prev => [...prev, novoMedicamento]);
-    
-    // Limpar formulário
-    setManualMedicamento({
-      nome: '', laboratorio: '', apresentacao: '', categoria: '', 
-      pmvg: '', precoFabrica: '', codigo: '',
-      ultimaAtualizacao: new Date().toISOString().split('T')[0]
-    });
-    setShowManualForm(false);
   };
 
   const removeMedicamento = (medicamentoId) => {
-    setSelectedMedicamentos(prev => prev.filter(m => m.id !== medicamentoId && m.codigo !== medicamentoId));
-  };
-
-  const updateMedicamentoData = (medicamentoId, field, value) => {
     setSelectedMedicamentos(prev => 
-      prev.map(m => {
-        if (m.id === medicamentoId || m.codigo === medicamentoId) {
-          const updated = { ...m, [field]: parseFloat(value) || value };
-          
-          // Atualizar data de última atualização se for preço de fábrica
-          if (field === 'precoFabricaEditavel') {
-            updated.ultimaAtualizacao = new Date().toISOString().split('T')[0];
-            updated.precoFabrica = parseFloat(value) || 0;
-          }
-          
-          return updated;
-        }
-        return m;
-      })
+      prev.filter(m => m.id !== medicamentoId && m.codigo !== medicamentoId)
     );
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    
-    // Gerar alertas automáticos antes de salvar
-    const alertasGerados = [];
-    selectedMedicamentos.forEach(med => {
-      const precoFabrica = med.precoFabricaEditavel || med.precoFabrica;
-      const precoOfertado = med.precoOfertado;
-      
-      // Alerta: Preço fábrica > Preço ofertado
-      if (precoFabrica && precoOfertado && precoFabrica > precoOfertado) {
-        alertasGerados.push({
-          id: `alert-${formData.numero || 'nova'}-${med.codigo}`,
-          tipo: 'risco_contratual',
-          titulo: `Risco Contratual: ${med.nome}`,
-          descricao: `Preço de fábrica (R$ ${precoFabrica.toFixed(2)}) superior ao ofertado (R$ ${precoOfertado.toFixed(2)}). Risco de descumprimento contratual.`,
-          medicamento: med,
-          licitacao: formData.numero,
-          prioridade: 'alta',
-          status: 'ativo',
-          dataGeracao: new Date().toISOString(),
-          acaoRequerida: 'Notificar órgão licitante e solicitar majoração da proposta'
-        });
-      }
-      
-      // Alerta: Preço ofertado > PMVG
-      if (precoOfertado && precoOfertado > med.pmvg) {
-        alertasGerados.push({
-          id: `alert-pmvg-${formData.numero || 'nova'}-${med.codigo}`,
-          tipo: 'risco_multa',
-          titulo: `Risco de Multa: ${med.nome}`,
-          descricao: `Preço ofertado (R$ ${precoOfertado.toFixed(2)}) acima da PMVG (R$ ${med.pmvg.toFixed(2)}). Risco de multa por não conformidade.`,
-          medicamento: med,
-          licitacao: formData.numero,
-          prioridade: 'alta',
-          status: 'ativo',
-          dataGeracao: new Date().toISOString(),
-          acaoRequerida: 'Ajustar preço para valor dentro da PMVG'
-        });
-      }
-    });
-
-    const licitacaoCompleta = {
-      ...formData, 
-      medicamentos: selectedMedicamentos,
-      alertasGerados,
-      totalMedicamentos: selectedMedicamentos.length,
-      medicamentosComRisco: alertasGerados.filter(a => a.tipo === 'risco_contratual').length,
-      economiaTotal: selectedMedicamentos.reduce((acc, med) => {
-        const economia = (med.precoOfertado || 0) - (med.precoFabricaEditavel || med.precoFabrica || 0);
-        return acc + (economia > 0 ? economia * (med.quantidade || 1) : 0);
-      }, 0),
-      temRiscos: alertasGerados.length > 0
-    };
-    
-    onSave(licitacaoCompleta);
+  const updateMedicamento = (medicamentoId, field, value) => {
+    setSelectedMedicamentos(prev => 
+      prev.map(m => 
+        (m.id === medicamentoId || m.codigo === medicamentoId) ? 
+          { ...m, [field]: parseFloat(value) || 0 } : m
+      )
+    );
   };
 
-  if (type !== 'licitacao') return null;
+  const handleSubmit = () => {
+    if (!formData.numero || !formData.orgao || !formData.dataVencimento) {
+      alert('Por favor, preencha todos os campos obrigatórios.');
+      return;
+    }
+
+    const medicamentosComRisco = selectedMedicamentos.filter(med => {
+      const precoFabrica = med.precoFabricaEditavel || med.precoFabrica || 0;
+      const precoOfertado = med.precoOfertado || 0;
+      return precoOfertado > med.pmvg;
+    });
+
+    if (medicamentosComRisco.length > 0) {
+      const confirmacao = window.confirm(
+        `⚠️ ATENÇÃO: PREÇOS ACIMA DO PMVG DETECTADOS\n\n` +
+        `${medicamentosComRisco.length} medicamento(s) com preço ofertado acima do PMVG.\n` +
+        `Isso pode resultar em multas da ANVISA.\n\n` +
+        `Medicamentos em risco:\n` +
+        medicamentosComRisco.map(med => `• ${med.nome} - R$ ${((med.precoOfertado || 0) - med.pmvg).toFixed(2)} acima`).join('\n') +
+        `\n\nDeseja continuar mesmo assim?`
+      );
+      
+      if (!confirmacao) {
+        return;
+      }
+    }
+
+    const licitacaoCompleta = {
+      ...formData,
+      medicamentos: selectedMedicamentos,
+      totalMedicamentos: selectedMedicamentos.length,
+      medicamentosComRisco: medicamentosComRisco.length,
+      valorTotal: selectedMedicamentos.reduce((acc, med) => acc + ((med.precoOfertado || 0) * (med.quantidade || 1)), 0),
+      economiaTotal: selectedMedicamentos.reduce((acc, med) => {
+        const economia = med.pmvg - (med.precoOfertado || 0);
+        return acc + (economia > 0 ? economia * (med.quantidade || 1) : 0);
+      }, 0),
+      temRiscos: medicamentosComRisco.length > 0
+    };
+
+    onSave(licitacaoCompleta);
+  };
 
   return (
     <div style={styles.modal}>
@@ -2592,7 +3086,7 @@ const Modal = ({ type, data, searchMedicamentos, onClose, onSave }) => {
         </div>
 
         <div style={styles.tabs}>
-          <button
+          <button 
             style={{
               ...styles.tab,
               ...(activeTab === 'dados-gerais' ? styles.tabActive : {})
@@ -2601,7 +3095,7 @@ const Modal = ({ type, data, searchMedicamentos, onClose, onSave }) => {
           >
             Dados Gerais
           </button>
-          <button
+          <button 
             style={{
               ...styles.tab,
               ...(activeTab === 'medicamentos' ? styles.tabActive : {})
@@ -2610,162 +3104,204 @@ const Modal = ({ type, data, searchMedicamentos, onClose, onSave }) => {
           >
             Medicamentos ({selectedMedicamentos.length})
           </button>
-          <button
+          <button 
             style={{
               ...styles.tab,
               ...(activeTab === 'comparacao' ? styles.tabActive : {})
             }}
             onClick={() => setActiveTab('comparacao')}
           >
-            Análise Anti-Multa
+            Análise PMVG
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          {activeTab === 'dados-gerais' && (
-            <div style={styles.form}>
-              <div style={styles.formGroupRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Número da Licitação</label>
-                  <input
-                    type="text"
-                    value={formData.numero || ''}
-                    onChange={(e) => setFormData({...formData, numero: e.target.value})}
-                    style={styles.input}
-                    placeholder="PP-001/2025"
-                    required
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Órgão</label>
-                  <input
-                    type="text"
-                    value={formData.orgao || ''}
-                    onChange={(e) => setFormData({...formData, orgao: e.target.value})}
-                    style={styles.input}
-                    placeholder="Secretaria Municipal de Saúde"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div style={styles.formGroupRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Data de Publicação</label>
-                  <input
-                    type="date"
-                    value={formData.dataPublicacao || ''}
-                    onChange={(e) => setFormData({...formData, dataPublicacao: e.target.value})}
-                    style={styles.input}
-                    required
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Data de Vencimento</label>
-                  <input
-                    type="date"
-                    value={formData.dataVencimento || ''}
-                    onChange={(e) => setFormData({...formData, dataVencimento: e.target.value})}
-                    style={styles.input}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div style={styles.formGroupRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Valor Estimado</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.valor || ''}
-                    onChange={(e) => setFormData({...formData, valor: parseFloat(e.target.value)})}
-                    style={styles.input}
-                    placeholder="100000.00"
-                    required
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Vigência Contratual</label>
-                  <input
-                    type="text"
-                    value={formData.vigenciaContratual || ''}
-                    onChange={(e) => setFormData({...formData, vigenciaContratual: e.target.value})}
-                    style={styles.input}
-                    placeholder="12 meses"
-                  />
-                </div>
-              </div>
-
+        {activeTab === 'dados-gerais' && (
+          <div style={styles.form}>
+            <div style={styles.formGroupRow}>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Observações</label>
-                <textarea
-                  value={formData.observacoes || ''}
-                  onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
-                  style={styles.textarea}
-                  placeholder="Observações adicionais sobre a licitação..."
+                <label style={styles.label}>Número da Licitação *</label>
+                <input
+                  type="text"
+                  value={formData.numero}
+                  onChange={(e) => setFormData({...formData, numero: e.target.value})}
+                  style={styles.input}
+                  placeholder="Ex: 001/2025"
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Órgão Licitante *</label>
+                <input
+                  type="text"
+                  value={formData.orgao}
+                  onChange={(e) => setFormData({...formData, orgao: e.target.value})}
+                  style={styles.input}
+                  placeholder="Ex: Secretaria Municipal de Saúde"
                 />
               </div>
             </div>
-          )}
 
-          {activeTab === 'medicamentos' && (
-            <div>
-              {/* Cabeçalho com opções */}
-              <div style={{ marginBottom: '1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <div>
-                    <h4 style={{ margin: '0 0 0.25rem 0' }}>Adicionar Medicamentos</h4>
-                    <p style={{ margin: 0, fontSize: '0.875rem', color: '#6b7280' }}>
-                      Busque na base PMVG ou cadastre medicamentos manualmente
-                    </p>
-                  </div>
-                  <button 
-                    type="button"
-                    onClick={() => setShowManualForm(!showManualForm)}
-                    style={{ 
-                      ...styles.button, 
-                      ...(showManualForm ? styles.buttonWarning : styles.buttonSecondary)
-                    }}
-                  >
-                    <Plus size={16} />
-                    {showManualForm ? 'Cancelar Manual' : 'Cadastro Manual'}
-                  </button>
+            <div style={styles.formGroupRow}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Vigência Contratual</label>
+                <input
+                  type="text"
+                  value={formData.vigencia}
+                  onChange={(e) => setFormData({...formData, vigencia: e.target.value})}
+                  style={styles.input}
+                  placeholder="Ex: 12 meses"
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Valor Estimado (R$)</label>
+                <input
+                  type="number"
+                  value={formData.valor}
+                  onChange={(e) => setFormData({...formData, valor: parseFloat(e.target.value) || 0})}
+                  style={styles.input}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div style={styles.formGroupRow}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Data de Publicação</label>
+                <input
+                  type="date"
+                  value={formData.dataPublicacao}
+                  onChange={(e) => setFormData({...formData, dataPublicacao: e.target.value})}
+                  style={styles.input}
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Data de Vencimento *</label>
+                <input
+                  type="date"
+                  value={formData.dataVencimento}
+                  onChange={(e) => setFormData({...formData, dataVencimento: e.target.value})}
+                  style={styles.input}
+                />
+              </div>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Status</label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({...formData, status: e.target.value})}
+                style={styles.select}
+              >
+                <option value="ativa">Ativa</option>
+                <option value="suspensa">Suspensa</option>
+                <option value="cancelada">Cancelada</option>
+                <option value="concluida">Concluída</option>
+              </select>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Observações</label>
+              <textarea
+                value={formData.observacoes}
+                onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
+                style={styles.textarea}
+                placeholder="Observações adicionais sobre a licitação..."
+              />
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'medicamentos' && (
+          <div>
+            <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: '600' }}>
+              Adicionar Medicamentos
+            </h4>
+            
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <Search size={16} style={{ 
+                    position: 'absolute', 
+                    left: '0.75rem', 
+                    top: '50%', 
+                    transform: 'translateY(-50%)', 
+                    color: '#9ca3af' 
+                  }} />
+                  <input
+                    type="text"
+                    placeholder="Digite o nome do medicamento para buscar na base PMVG..."
+                    value={searchTerm}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    style={{ ...styles.input, paddingLeft: '2.5rem' }}
+                  />
                 </div>
-
-                {/* FORMULÁRIO DE CADASTRO MANUAL */}
-                {showManualForm && (
-                  <div style={{ 
-                    border: '2px solid #2563eb', 
-                    borderRadius: '8px', 
-                    padding: '1.5rem', 
-                    marginBottom: '1.5rem',
-                    backgroundColor: '#f8fafc'
-                  }}>
-                    <h5 style={{ margin: '0 0 1rem 0', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Package size={20} />
-                      Cadastro Manual de Medicamento
-                    </h5>
-                    
+                <button
+                  onClick={() => setShowManualForm(!showManualForm)}
+                  style={{ ...styles.button, ...styles.buttonSecondary }}
+                >
+                  <Plus size={16} />
+                  {showManualForm ? 'Cancelar Manual' : 'Cadastro Manual'}
+                </button>
+              </div>
+              
+              {searchResults.length > 0 && (
+                <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
+                  {searchResults.slice(0, 10).map(med => (
+                    <div key={med.id || med.codigo} style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      padding: '0.75rem',
+                      borderBottom: '1px solid #f3f4f6'
+                    }}>
+                      <div>
+                        <div style={{ fontWeight: '500' }}>{med.nome}</div>
+                        <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                          {med.laboratorio} | PMVG: R$ {med.pmvg.toFixed(2)}
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => addMedicamento(med)}
+                        style={{ ...styles.button, ...styles.buttonPrimary }}
+                      >
+                        <Plus size={16} />
+                        Adicionar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {showManualForm && (
+                <div style={{ 
+                  border: '1px solid #e5e7eb', 
+                  borderRadius: '6px', 
+                  padding: '1rem',
+                  backgroundColor: '#f9fafb'
+                }}>
+                  <h5 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: '600' }}>
+                    Cadastro Manual de Medicamento
+                  </h5>
+                  
+                  <div style={styles.form}>
                     <div style={styles.formGroupRow}>
                       <div style={styles.formGroup}>
                         <label style={styles.label}>Nome do Medicamento *</label>
                         <input
                           type="text"
-                          value={manualMedicamento.nome}
-                          onChange={(e) => setManualMedicamento({...manualMedicamento, nome: e.target.value})}
+                          value={manualMed.nome}
+                          onChange={(e) => setManualMed({...manualMed, nome: e.target.value})}
                           style={styles.input}
-                          placeholder="Ex: DIPIRONA 500MG COMPRIMIDO"
+                          placeholder="Ex: Dipirona Sódica 500mg"
                         />
                       </div>
                       <div style={styles.formGroup}>
                         <label style={styles.label}>Laboratório</label>
                         <input
                           type="text"
-                          value={manualMedicamento.laboratorio}
-                          onChange={(e) => setManualMedicamento({...manualMedicamento, laboratorio: e.target.value})}
+                          value={manualMed.laboratorio}
+                          onChange={(e) => setManualMed({...manualMed, laboratorio: e.target.value})}
                           style={styles.input}
-                          placeholder="Ex: SANOFI"
+                          placeholder="Ex: Sanofi"
                         />
                       </div>
                     </div>
@@ -2775,10 +3311,10 @@ const Modal = ({ type, data, searchMedicamentos, onClose, onSave }) => {
                         <label style={styles.label}>Código</label>
                         <input
                           type="text"
-                          value={manualMedicamento.codigo}
-                          onChange={(e) => setManualMedicamento({...manualMedicamento, codigo: e.target.value})}
+                          value={manualMed.codigo}
+                          onChange={(e) => setManualMed({...manualMed, codigo: e.target.value})}
                           style={styles.input}
-                          placeholder="Ex: 90000000"
+                          placeholder="Ex: 123456"
                         />
                       </div>
                       <div style={styles.formGroup}>
@@ -2786,8 +3322,8 @@ const Modal = ({ type, data, searchMedicamentos, onClose, onSave }) => {
                         <input
                           type="number"
                           step="0.01"
-                          value={manualMedicamento.pmvg}
-                          onChange={(e) => setManualMedicamento({...manualMedicamento, pmvg: e.target.value})}
+                          value={manualMed.pmvg}
+                          onChange={(e) => setManualMed({...manualMed, pmvg: e.target.value})}
                           style={styles.input}
                           placeholder="0.00"
                         />
@@ -2797,8 +3333,8 @@ const Modal = ({ type, data, searchMedicamentos, onClose, onSave }) => {
                         <input
                           type="number"
                           step="0.01"
-                          value={manualMedicamento.precoFabrica}
-                          onChange={(e) => setManualMedicamento({...manualMedicamento, precoFabrica: e.target.value})}
+                          value={manualMed.precoFabrica}
+                          onChange={(e) => setManualMed({...manualMed, precoFabrica: e.target.value})}
                           style={styles.input}
                           placeholder="0.00"
                         />
@@ -2810,516 +3346,274 @@ const Modal = ({ type, data, searchMedicamentos, onClose, onSave }) => {
                         <label style={styles.label}>Apresentação</label>
                         <input
                           type="text"
-                          value={manualMedicamento.apresentacao}
-                          onChange={(e) => setManualMedicamento({...manualMedicamento, apresentacao: e.target.value})}
+                          value={manualMed.apresentacao}
+                          onChange={(e) => setManualMed({...manualMed, apresentacao: e.target.value})}
                           style={styles.input}
-                          placeholder="Ex: CAIXA COM 20 COMPRIMIDOS"
+                          placeholder="Ex: Comprimido, Caixa com 20 comprimidos"
                         />
                       </div>
                       <div style={styles.formGroup}>
                         <label style={styles.label}>Categoria</label>
                         <select
-                          value={manualMedicamento.categoria}
-                          onChange={(e) => setManualMedicamento({...manualMedicamento, categoria: e.target.value})}
+                          value={manualMed.categoria}
+                          onChange={(e) => setManualMed({...manualMed, categoria: e.target.value})}
                           style={styles.select}
                         >
-                          <option value="">Selecione uma categoria</option>
-                          {categorias.map(cat => (
+                          {categories.map(cat => (
                             <option key={cat} value={cat}>{cat}</option>
                           ))}
                         </select>
                       </div>
                     </div>
                     
-                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                      <button 
-                        type="button" 
-                        onClick={() => setShowManualForm(false)}
-                        style={{ ...styles.button, ...styles.buttonSecondary }}
-                      >
-                        Cancelar
-                      </button>
-                      <button 
-                        type="button" 
-                        onClick={addManualMedicamento}
-                        style={{ ...styles.button, ...styles.buttonPrimary }}
-                      >
-                        <Plus size={16} />
-                        Adicionar Medicamento
-                      </button>
-                    </div>
+                    <button 
+                      onClick={addManualMedicamento}
+                      style={{ ...styles.button, ...styles.buttonSuccess }}
+                    >
+                      <Plus size={16} />
+                      Adicionar Medicamento
+                    </button>
                   </div>
-                )}
-                
-                {/* BUSCA NA BASE PMVG */}
-                {!showManualForm && (
-                  <div style={{ position: 'relative', marginBottom: '1rem' }}>
-                    <Search size={16} style={{ 
-                      position: 'absolute', 
-                      left: '0.75rem', 
-                      top: '50%', 
-                      transform: 'translateY(-50%)', 
-                      color: '#9ca3af' 
-                    }} />
-                    <input
-                      type="text"
-                      placeholder="Digite o nome do medicamento para buscar na base PMVG..."
-                      value={searchTerm}
-                      onChange={(e) => handleSearch(e.target.value)}
-                      style={{ ...styles.input, paddingLeft: '2.5rem' }}
-                    />
-                    {isSearching && (
-                      <RefreshCw size={16} style={{ 
-                        position: 'absolute', 
-                        right: '0.75rem', 
-                        top: '50%', 
-                        transform: 'translateY(-50%)', 
-                        color: '#2563eb',
-                        animation: 'spin 1s linear infinite'
-                      }} />
-                    )}
-                  </div>
-                )}
-
-                {/* Resultados da busca */}
-                {searchResults.length > 0 && !showManualForm && (
-                  <div style={{ 
-                    maxHeight: '200px', 
-                    overflowY: 'auto', 
-                    border: '1px solid #e5e7eb', 
-                    borderRadius: '6px',
-                    marginBottom: '1rem'
-                  }}>
-                    {searchResults.map(med => (
-                      <div
-                        key={med.id || med.codigo}
-                        onClick={() => addMedicamento(med)}
-                        style={{
-                          ...styles.searchResult,
-                          borderBottom: '1px solid #f3f4f6'
-                        }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f9ff'}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <div style={{ fontWeight: '500', fontSize: '0.875rem' }}>{med.nome}</div>
-                            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                              {med.laboratorio} - PMVG: R$ {med.pmvg.toFixed(2)}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            style={{ ...styles.button, ...styles.buttonPrimary, padding: '0.25rem 0.5rem' }}
-                          >
-                            <Plus size={14} />
-                            Adicionar
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Medicamentos Selecionados */}
-              {selectedMedicamentos.length > 0 && (
-                <div>
-                  <h4 style={{ margin: '0 0 1rem 0' }}>Medicamentos Selecionados ({selectedMedicamentos.length})</h4>
-                  <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
-                    <table style={styles.table}>
-                      <thead>
-                        <tr>
-                          <th style={styles.th}>Medicamento</th>
-                          <th style={styles.th}>PMVG</th>
-                          <th style={styles.th}>Preço Fábrica</th>
-                          <th style={styles.th}>Preço Ofertado</th>
-                          <th style={styles.th}>Quantidade</th>
-                          <th style={styles.th}>Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedMedicamentos.map(med => {
-                          const precoFabrica = med.precoFabricaEditavel || med.precoFabrica || 0;
-                          const isRisco = precoFabrica > (med.precoOfertado || 0);
-                          const isAcimaPMVG = (med.precoOfertado || 0) > med.pmvg;
-                          
-                          return (
-                            <tr key={med.id || med.codigo} style={{ 
-                              backgroundColor: isAcimaPMVG ? '#fef2f2' : isRisco ? '#fffbeb' : 'white' 
-                            }}>
-                              <td style={styles.td}>
-                                <div>
-                                  <div style={{ fontWeight: '500', fontSize: '0.875rem' }}>{med.nome}</div>
-                                  <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                                    {med.laboratorio}
-                                    {med.manual && <span style={{ color: '#2563eb', marginLeft: '0.5rem' }}>(Manual)</span>}
-                                  </div>
-                                </div>
-                              </td>
-                              <td style={styles.td}>R$ {med.pmvg.toFixed(2)}</td>
-                              <td style={styles.td}>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={med.precoFabricaEditavel || med.precoFabrica || ''}
-                                  onChange={(e) => updateMedicamentoData(med.id || med.codigo, 'precoFabricaEditavel', e.target.value)}
-                                  style={{ 
-                                    ...styles.input, 
-                                    padding: '0.25rem', 
-                                    fontSize: '0.875rem',
-                                    backgroundColor: med.editavel !== false ? '#fff' : '#f9fafb'
-                                  }}
-                                  placeholder="0.00"
-                                  title="Preço de fábrica editável"
-                                />
-                                <div style={{ fontSize: '0.6rem', color: '#9ca3af', marginTop: '0.25rem' }}>
-                                  Atualizado: {new Date(med.ultimaAtualizacao).toLocaleDateString('pt-BR')}
-                                </div>
-                              </td>
-                              <td style={styles.td}>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={med.precoOfertado || ''}
-                                  onChange={(e) => updateMedicamentoData(med.id || med.codigo, 'precoOfertado', e.target.value)}
-                                  style={{ 
-                                    ...styles.input, 
-                                    padding: '0.25rem', 
-                                    fontSize: '0.875rem',
-                                    borderColor: isAcimaPMVG ? '#dc2626' : '#d1d5db'
-                                  }}
-                                  placeholder="0.00"
-                                />
-                              </td>
-                              <td style={styles.td}>
-                                <input
-                                  type="number"
-                                  value={med.quantidade || 1}
-                                  onChange={(e) => updateMedicamentoData(med.id || med.codigo, 'quantidade', e.target.value)}
-                                  style={{ ...styles.input, padding: '0.25rem', fontSize: '0.875rem' }}
-                                  min="1"
-                                />
-                              </td>
-                              <td style={styles.td}>
-                                <button
-                                  type="button"
-                                  onClick={() => removeMedicamento(med.id || med.codigo)}
-                                  style={{ ...styles.button, ...styles.buttonDanger, padding: '0.25rem' }}
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Aviso sobre atualização de preços */}
-                  <div style={{ ...styles.alert, ...styles.alertInfo, marginTop: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Calendar size={16} />
-                      <strong>Importante: Atualização de Preços de Fábrica</strong>
-                    </div>
-                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem' }}>
-                      Mantenha os preços de fábrica sempre atualizados para garantir análises precisas e evitar riscos contratuais. 
-                      A base PMVG é atualizada automaticamente todo dia 28.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {selectedMedicamentos.length === 0 && (
-                <div style={{ 
-                  padding: '2rem', 
-                  textAlign: 'center', 
-                  backgroundColor: '#f9fafb', 
-                  borderRadius: '6px',
-                  border: '2px dashed #e5e7eb'
-                }}>
-                  <Search size={48} style={{ margin: '0 auto 1rem', color: '#d1d5db' }} />
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#374151' }}>Nenhum medicamento selecionado</h4>
-                  <p style={{ margin: 0, color: '#6b7280' }}>
-                    Use a busca na base PMVG ou o cadastro manual para adicionar medicamentos
-                  </p>
                 </div>
               )}
             </div>
-          )}
-
-          {activeTab === 'comparacao' && selectedMedicamentos.length > 0 && (
-            <div>
-              <div style={{ marginBottom: '1rem' }}>
-                <h4 style={{ margin: '0 0 0.5rem 0' }}>Análise PMVG por Medicamento</h4>
-                <p style={{ margin: 0, fontSize: '0.875rem', color: '#6b7280' }}>
-                  Verificação automática de conformidade para prevenir problemas contratuais
+            
+            <h4 style={{ margin: '1.5rem 0 1rem 0', fontSize: '1.125rem', fontWeight: '600' }}>
+              Medicamentos Selecionados ({selectedMedicamentos.length})
+            </h4>
+            
+            {selectedMedicamentos.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280', backgroundColor: '#f9fafb', borderRadius: '6px' }}>
+                <Pill size={48} style={{ margin: '0 auto 1rem', color: '#d1d5db' }} />
+                <p>Nenhum medicamento selecionado</p>
+                <p style={{ fontSize: '0.875rem' }}>
+                  Use a busca acima para encontrar medicamentos na base PMVG ou cadastre manualmente
                 </p>
               </div>
-
-              <div style={{ display: 'grid', gap: '1rem' }}>
-                {selectedMedicamentos.map(med => {
-                  const precoFabrica = med.precoFabricaEditavel || med.precoFabrica || 0;
-                  const precoOfertado = med.precoOfertado || 0;
-                  const isAcimaPMVG = precoOfertado > med.pmvg;
-                  const temRisco = precoFabrica > precoOfertado;
-                  const margem = precoOfertado - precoFabrica;
-                  const margemPMVG = med.pmvg - precoOfertado;
-                  
-                  return (
-                    <div key={med.id || med.codigo} style={{ 
-                      border: '1px solid #e5e7eb', 
-                      borderRadius: '6px', 
-                      padding: '1rem',
-                      borderLeft: `4px solid ${isAcimaPMVG ? '#dc2626' : temRisco ? '#d97706' : '#16a34a'}`
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                        <div>
-                          <h5 style={{ margin: '0 0 0.25rem 0', fontWeight: '600' }}>{med.nome}</h5>
-                          <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                            {med.laboratorio} • Qtd: {med.quantidade || 1}
-                            {med.manual && <span style={{ color: '#2563eb', marginLeft: '0.5rem' }}>(Cadastro Manual)</span>}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Total Estimado</div>
-                          <div style={{ fontWeight: '600', fontSize: '1rem' }}>
-                            R$ {(precoOfertado * (med.quantidade || 1)).toFixed(2)}
-                          </div>
-                        </div>
-                      </div>
+            ) : (
+              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Medicamento</th>
+                      <th style={styles.th}>PMVG</th>
+                      <th style={styles.th}>Preço Fábrica</th>
+                      <th style={styles.th}>Preço Ofertado</th>
+                      <th style={styles.th}>Quantidade</th>
+                      <th style={styles.th}>Total</th>
+                      <th style={styles.th}>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedMedicamentos.map((med, index) => {
+                      const precoOfertado = med.precoOfertado || 0;
+                      const quantidade = med.quantidade || 1;
+                      const precoFabrica = med.precoFabricaEditavel || med.precoFabrica || 0;
+                      const total = precoOfertado * quantidade;
+                      const isAcimaPMVG = precoOfertado > med.pmvg;
+                      const temRiscoContratual = precoFabrica > precoOfertado;
                       
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                        <div style={styles.priceBox}>
-                          <div style={styles.priceLabel}>PMVG (Limite)</div>
-                          <div style={{ ...styles.priceValue, fontSize: '1rem', color: '#2563eb' }}>
+                      return (
+                        <tr key={index} style={{ 
+                          borderLeft: `4px solid ${isAcimaPMVG ? '#dc2626' : temRiscoContratual ? '#d97706' : '#16a34a'}`
+                        }}>
+                          <td style={styles.td}>
+                            <div>
+                              <div style={{ fontWeight: '500' }}>{med.nome}</div>
+                              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                                {med.laboratorio} {med.origem === 'manual' && '(Manual)'}
+                              </div>
+                            </div>
+                          </td>
+                          <td style={styles.td}>
                             R$ {med.pmvg.toFixed(2)}
-                          </div>
-                        </div>
-                        
-                        <div style={styles.priceBox}>
-                          <div style={styles.priceLabel}>Preço Fábrica</div>
-                          <div style={{ 
-                            ...styles.priceValue, 
-                            fontSize: '1rem',
-                            color: temRisco ? '#dc2626' : '#6b7280'
-                          }}>
-                            R$ {precoFabrica.toFixed(2)}
-                          </div>
-                          <div style={{ fontSize: '0.6rem', color: '#9ca3af' }}>
-                            Atualizado: {new Date(med.ultimaAtualizacao).toLocaleDateString('pt-BR')}
-                          </div>
-                        </div>
-                        
-                        <div style={styles.priceBox}>
-                          <div style={styles.priceLabel}>Preço Ofertado</div>
-                          <div style={{ 
-                            ...styles.priceValue, 
-                            fontSize: '1rem',
-                            color: isAcimaPMVG ? '#dc2626' : '#16a34a'
-                          }}>
-                            R$ {precoOfertado.toFixed(2)}
-                          </div>
-                        </div>
-                        
-                        <div style={styles.priceBox}>
-                          <div style={styles.priceLabel}>Margem</div>
-                          <div style={{ 
-                            ...styles.priceValue, 
-                            fontSize: '1rem',
-                            color: margem >= 0 ? '#16a34a' : '#dc2626'
-                          }}>
-                            R$ {margem.toFixed(2)}
-                          </div>
-                          <div style={{ fontSize: '0.6rem', color: '#9ca3af' }}>
-                            {margem >= 0 ? 'Lucro/unidade' : 'Prejuízo/unidade'}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Status de Conformidade Detalhado */}
-                      {isAcimaPMVG ? (
-                        <div style={{ ...styles.alert, ...styles.alertError, margin: 0, padding: '0.75rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <XCircle size={16} />
-                            <strong>🚨 RISCO DE MULTA CRÍTICO</strong>
-                          </div>
-                          <p style={{ margin: '0.25rem 0 0.5rem 0', fontSize: '0.875rem' }}>
-                            Preço ofertado está R$ {(precoOfertado - med.pmvg).toFixed(2)} acima da PMVG. 
-                            <strong> NÃO PROSSIGA</strong> com esta oferta para evitar multas governamentais.
-                          </p>
-                          <div style={{ fontSize: '0.75rem', backgroundColor: '#b91c1c', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>
-                            <strong>AÇÃO OBRIGATÓRIA:</strong> Reduzir preço para no máximo R$ {med.pmvg.toFixed(2)}
-                          </div>
-                        </div>
-                      ) : temRisco ? (
-                        <div style={{ ...styles.alert, ...styles.alertWarning, margin: 0, padding: '0.75rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <AlertTriangle size={16} />
-                            <strong>⚠️ RISCO CONTRATUAL DETECTADO</strong>
-                          </div>
-                          <p style={{ margin: '0.25rem 0 0.5rem 0', fontSize: '0.875rem' }}>
-                            Preço de fábrica (R$ {precoFabrica.toFixed(2)}) é superior ao ofertado (R$ {precoOfertado.toFixed(2)}). 
-                            Risco de não conseguir cumprir o contrato.
-                          </p>
-                          <div style={{ fontSize: '0.75rem', backgroundColor: '#d97706', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>
-                            <strong>AÇÃO REQUERIDA:</strong> Ajustar preço ofertado ou negociar com fabricante
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ ...styles.alert, ...styles.alertSuccess, margin: 0, padding: '0.75rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <CheckCircle size={16} />
-                            <strong>✅ CONFORME - SEM RISCOS</strong>
-                          </div>
-                          <div style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                            <div>
-                              <strong>Margem de segurança PMVG:</strong> R$ {margemPMVG.toFixed(2)}
-                            </div>
-                            <div>
-                              <strong>Margem de lucro:</strong> R$ {margem.toFixed(2)} ({((margem/precoOfertado)*100).toFixed(1)}%)
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Recomendações Automáticas */}
-                      <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: '#6b7280' }}>
-                        <strong>💡 Recomendações automáticas:</strong>
-                        <ul style={{ margin: '0.25rem 0 0 1rem', paddingLeft: '0.5rem' }}>
-                          {isAcimaPMVG && (
-                            <li>Reduza o preço para R$ {(med.pmvg * 0.98).toFixed(2)} (98% da PMVG)</li>
-                          )}
-                          {temRisco && !isAcimaPMVG && (
-                            <li>Aumente o preço ofertado para R$ {(precoFabrica * 1.1).toFixed(2)} (10% acima do custo)</li>
-                          )}
-                          {!isAcimaPMVG && !temRisco && margem < (precoOfertado * 0.1) && (
-                            <li>Margem baixa. Considere negociar melhores condições com o fabricante</li>
-                          )}
-                          {!isAcimaPMVG && !temRisco && margem >= (precoOfertado * 0.1) && (
-                            <li>Configuração otimizada! Pode prosseguir com segurança</li>
-                          )}
-                        </ul>
-                      </div>
-                    </div>
-                  );
-                })}
+                          </td>
+                          <td style={styles.td}>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={med.precoFabricaEditavel || med.precoFabrica || 0}
+                              onChange={(e) => updateMedicamento(med.id || med.codigo, 'precoFabricaEditavel', e.target.value)}
+                              style={{ ...styles.input, padding: '0.25rem', fontSize: '0.875rem' }}
+                            />
+                          </td>
+                          <td style={styles.td}>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={precoOfertado}
+                              onChange={(e) => updateMedicamento(med.id || med.codigo, 'precoOfertado', e.target.value)}
+                              style={{ ...styles.input, padding: '0.25rem', fontSize: '0.875rem' }}
+                            />
+                          </td>
+                          <td style={styles.td}>
+                            <input
+                              type="number"
+                              value={quantidade}
+                              onChange={(e) => updateMedicamento(med.id || med.codigo, 'quantidade', e.target.value)}
+                              style={{ ...styles.input, padding: '0.25rem', fontSize: '0.875rem' }}
+                            />
+                          </td>
+                          <td style={styles.td}>
+                            R$ {total.toFixed(2)}
+                          </td>
+                          <td style={styles.td}>
+                            <button
+                              type="button"
+                              onClick={() => removeMedicamento(med.id || med.codigo)}
+                              style={{ ...styles.button, ...styles.buttonDanger, padding: '0.25rem' }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-
-              {/* Resumo Geral da Licitação */}
-              <div style={{ 
-                marginTop: '1.5rem', 
-                padding: '1rem', 
-                backgroundColor: '#f9fafb', 
-                borderRadius: '6px',
-                border: '1px solid #e5e7eb'
-              }}>
-                <h4 style={{ margin: '0 0 1rem 0', fontWeight: '600' }}>Resumo Geral da Licitação</h4>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                  <div>
-                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Total de Itens</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '600', color: '#1f2937' }}>
-                      {selectedMedicamentos.length}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Valor Total</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '600', color: '#1f2937' }}>
-                      R$ {selectedMedicamentos.reduce((acc, med) => 
-                        acc + ((med.precoOfertado || 0) * (med.quantidade || 1)), 0
-                      ).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Margem Total</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '600', color: '#16a34a' }}>
-                      R$ {selectedMedicamentos.reduce((acc, med) => {
-                        const margem = (med.precoOfertado || 0) - (med.precoFabricaEditavel || med.precoFabrica || 0);
-                        return acc + (margem > 0 ? margem * (med.quantidade || 1) : 0);
-                      }, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Status Geral */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', fontSize: '0.875rem' }}>
-                  <div style={{ 
-                    color: selectedMedicamentos.filter(m => (m.precoOfertado || 0) <= m.pmvg).length === selectedMedicamentos.length ? '#16a34a' : '#dc2626' 
-                  }}>
-                    <strong>Conformidade PMVG:</strong> {selectedMedicamentos.filter(m => (m.precoOfertado || 0) <= m.pmvg).length}/{selectedMedicamentos.length}
-                  </div>
-                  <div style={{ 
-                    color: selectedMedicamentos.filter(m => (m.precoFabricaEditavel || m.precoFabrica || 0) <= (m.precoOfertado || 0)).length === selectedMedicamentos.length ? '#16a34a' : '#dc2626' 
-                  }}>
-                    <strong>Viabilidade:</strong> {selectedMedicamentos.filter(m => (m.precoFabricaEditavel || m.precoFabrica || 0) <= (m.precoOfertado || 0)).length}/{selectedMedicamentos.length}
-                  </div>
-                  <div style={{ 
-                    color: selectedMedicamentos.every(m => (m.precoOfertado || 0) <= m.pmvg && (m.precoFabricaEditavel || m.precoFabrica || 0) <= (m.precoOfertado || 0)) ? '#16a34a' : '#dc2626'
-                  }}>
-                    <strong>Status Geral:</strong> {selectedMedicamentos.every(m => (m.precoOfertado || 0) <= m.pmvg && (m.precoFabricaEditavel || m.precoFabrica || 0) <= (m.precoOfertado || 0)) ? 
-                      '✅ APROVADO' : '⚠️ TEM RISCOS'
-                    }
-                  </div>
-                </div>
-
-                {/* Alerta Geral */}
-                {selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg) && (
-                  <div style={{ ...styles.alert, ...styles.alertError, marginTop: '1rem', padding: '0.75rem' }}>
-                    <strong>🚨 BLOQUEIO AUTOMÁTICO:</strong> Licitação contém preços acima da PMVG. 
-                    Corrija os itens marcados antes de prosseguir para evitar multas.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
-            <button type="button" onClick={onClose} style={{ ...styles.button, ...styles.buttonSecondary }}>
-              Cancelar
-            </button>
-            <button 
-              type="submit" 
-              style={{ 
-                ...styles.button, 
-                ...(selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg) ? styles.buttonDanger : styles.buttonPrimary),
-                opacity: selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg) ? 0.6 : 1
-              }}
-              disabled={selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg)}
-            >
-              <Save size={16} />
-              {selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg) ? 
-                'Corrija os Riscos Primeiro' : 'Salvar Licitação'
-              }
-            </button>
+            )}
           </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-// Componente de Estatística
-const StatCard = ({ title, value, icon: Icon, color, subtitle }) => {
-  const colorStyles = {
-    blue: styles.statIconBlue,
-    green: styles.statIconGreen,
-    red: styles.statIconRed,
-    yellow: styles.statIconYellow
-  };
-
-  return (
-    <div style={styles.statCard}>
-      <div style={{ ...styles.statIcon, ...colorStyles[color] }}>
-        <Icon size={24} />
-      </div>
-      <div style={styles.statText}>
-        <p style={styles.statTitle}>{title}</p>
-        <p style={styles.statValue}>{typeof value === 'number' ? value.toLocaleString() : value}</p>
-        {subtitle && (
-          <p style={styles.statSubtitle}>{subtitle}</p>
         )}
+
+        {activeTab === 'comparacao' && (
+          <div>
+            <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: '600' }}>
+              Análise PMVG - Prevenção de Multas
+            </h4>
+            
+            {selectedMedicamentos.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                <AlertTriangle size={48} style={{ margin: '0 auto 1rem', color: '#d1d5db' }} />
+                <p>Adicione medicamentos para visualizar a análise PMVG</p>
+              </div>
+            ) : (
+              <div>
+                <div style={styles.statsGrid}>
+                  <StatCard
+                    title="Medicamentos Conformes"
+                    value={selectedMedicamentos.filter(med => (med.precoOfertado || 0) <= med.pmvg).length}
+                    icon={CheckCircle}
+                    color="green"
+                    subtitle="Dentro do PMVG"
+                  />
+                  <StatCard
+                    title="Medicamentos em Risco"
+                    value={selectedMedicamentos.filter(med => (med.precoOfertado || 0) > med.pmvg).length}
+                    icon={AlertTriangle}
+                    color="red"
+                    subtitle="Acima do PMVG"
+                  />
+                  <StatCard
+                    title="Economia Total"
+                    value={`R$ ${selectedMedicamentos.reduce((acc, med) => {
+                      const economia = med.pmvg - (med.precoOfertado || 0);
+                      return acc + (economia > 0 ? economia * (med.quantidade || 1) : 0);
+                    }, 0).toFixed(2)}`}
+                    icon={DollarSign}
+                    color="green"
+                    subtitle="Valor economizado"
+                  />
+                </div>
+                
+                <div style={{ display: 'grid', gap: '1rem', marginTop: '1.5rem' }}>
+                  {selectedMedicamentos.map((med, index) => {
+                    const precoOfertado = med.precoOfertado || 0;
+                    const precoFabrica = med.precoFabricaEditavel || med.precoFabrica || 0;
+                    const isAcimaPMVG = precoOfertado > med.pmvg;
+                    const temRisco = precoFabrica > precoOfertado;
+                    
+                    return (
+                      <div key={index} style={{ 
+                        border: '1px solid #e5e7eb', 
+                        borderRadius: '6px', 
+                        padding: '1rem',
+                        borderLeft: `4px solid ${isAcimaPMVG ? '#dc2626' : temRisco ? '#d97706' : '#16a34a'}`
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ flex: 1 }}>
+                            <h5 style={{ margin: '0 0 0.5rem 0', fontWeight: '500' }}>{med.nome}</h5>
+                            <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+                              {med.laboratorio} | {med.apresentacao}
+                            </div>
+                            
+                            <div style={styles.priceComparison}>
+                              <div style={styles.priceBox}>
+                                <div style={styles.priceLabel}>PMVG Oficial</div>
+                                <div style={{ ...styles.priceValue, color: '#16a34a' }}>
+                                  R$ {med.pmvg.toFixed(2)}
+                                </div>
+                              </div>
+                              <div style={styles.priceBox}>
+                                <div style={styles.priceLabel}>Preço Fábrica</div>
+                                <div style={{ ...styles.priceValue, color: '#2563eb' }}>
+                                  R$ {precoFabrica.toFixed(2)}
+                                </div>
+                              </div>
+                              <div style={styles.priceBox}>
+                                <div style={styles.priceLabel}>Preço Ofertado</div>
+                                <div style={{ ...styles.priceValue, color: isAcimaPMVG ? '#dc2626' : '#16a34a' }}>
+                                  R$ {precoOfertado.toFixed(2)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div style={{ marginLeft: '1rem' }}>
+                            {isAcimaPMVG ? (
+                              <div style={{ ...styles.alertError, padding: '0.5rem' }}>
+                                <strong>🚨 RISCO DE MULTA CRÍTICO</strong>
+                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
+                                  Preço R$ {(precoOfertado - med.pmvg).toFixed(2)} acima da PMVG
+                                </p>
+                              </div>
+                            ) : temRisco ? (
+                              <div style={{ ...styles.alertWarning, padding: '0.5rem' }}>
+                                <strong>⚠️ RISCO CONTRATUAL</strong>
+                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
+                                  Preço fábrica maior que ofertado
+                                </p>
+                              </div>
+                            ) : (
+                              <div style={{ ...styles.alertSuccess, padding: '0.5rem' }}>
+                                <strong>✅ CONFORME - SEM RISCOS</strong>
+                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
+                                  Dentro dos parâmetros de segurança
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
+          <button onClick={onClose} style={{ ...styles.button, ...styles.buttonSecondary }}>
+            Cancelar
+          </button>
+          <button 
+            onClick={handleSubmit}
+            disabled={selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg)}
+            style={{ 
+              ...styles.button, 
+              ...(selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg) ? 
+                { ...styles.buttonDanger, opacity: 0.7 } : 
+                styles.buttonSuccess
+              )
+            }}
+          >
+            {selectedMedicamentos.some(m => (m.precoOfertado || 0) > m.pmvg) ? 
+              'Corrija os Riscos Primeiro' : 
+              'Salvar Licitação'
+            }
+          </button>
+        </div>
       </div>
     </div>
   );
